@@ -1,0 +1,86 @@
+# Aegis — .gitignore
+#
+# This file is intentionally forward-looking: Phase 0 ships documentation only, but this
+# repository will grow a Rust/Anchor workspace, a TypeScript SDK/app, and local validator
+# state in later phases. Everything listed here is either a secret or safely regenerable
+# from committed source via the setup steps in README.md / docs/phases/phase-01-foundation.md.
+# Nothing listed here is required to reconstruct the project.
+
+# --- Secrets & credentials (NEVER commit) ---
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+*secret*
+*credential*
+id_rsa*
+id_ed25519*
+
+# Solana / wallet keypairs (NEVER commit — a keypair file is a private key)
+*-keypair.json
+keypair.json
+id.json
+**/keys/*.json
+!**/keys/*.example.json
+
+# --- Rust / Cargo build artifacts ---
+target/
+**/*.rs.bk
+Cargo.lock.bak
+
+# --- Anchor build/test artifacts ---
+.anchor/
+test-ledger/
+program-logs/
+
+# --- Solana local validator / Surfpool state ---
+test-ledger/
+*.ledger/
+surfpool-data/
+.surfpool/
+
+# --- Node / TypeScript ---
+node_modules/
+dist/
+build/
+.next/
+out/
+*.tsbuildinfo
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+.pnpm-store/
+
+# --- Benchmark scratch (committed results live in benchmarks/*.json, not here) ---
+benchmarks/*.raw
+benchmarks/tmp/
+
+# --- Coverage / fuzz artifacts ---
+coverage/
+fuzz/corpus/
+fuzz/artifacts/
+*.profraw
+
+# --- OS / editor / IDE ---
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+Thumbs.db
+.idea/
+.vscode/
+!.vscode/extensions.json
+*.swp
+*.swo
+*~
+
+# --- Claude Code local session state (machine/session-specific, not project config) ---
+.claude/settings.local.json
+
+# --- Logs / temp ---
+*.log
+.tmp/
+tmp/

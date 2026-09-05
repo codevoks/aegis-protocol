@@ -1,0 +1,15 @@
+[package]
+name = "aegis-test-kit"
+version = "0.1.0"
+edition.workspace = true
+rust-version.workspace = true
+description = "Local, offline LiteSVM test fixtures for Aegis Protocol"
+license = "Apache-2.0"
+
+[dependencies]
+litesvm = "0.16"
+solana-keypair = "3"
+# 4.x re-exports `Pubkey` as a plain alias of `solana_address::Address` (the type litesvm's
+# public API now uses directly), so this must track litesvm's own major line, not "3".
+solana-pubkey = "4"
+solana-signer = "3"

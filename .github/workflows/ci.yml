@@ -1,0 +1,103 @@
+name: CI
+
+# Every required job runs with no secrets configured (docs/zero-cost-demo.md §7): no RPC
+# endpoint, no API key, no faucet. If a required check ever needs one, that is a bug in
+# the check, not something to work around here.
+on:
+  push:
+    branches: ["**"]
+  pull_request:
+    branches: ["**"]
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  fmt:
+    name: fmt
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install pinned Rust toolchain
+        run: rustup show
+      - name: cargo fmt --check
+        run: cargo fmt --all --check
+
+  clippy:
+    name: clippy
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install pinned Rust toolchain
+        run: rustup show
+      - name: Cache cargo registry and target
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: ${{ runner.os }}-cargo-clippy-${{ hashFiles('**/Cargo.lock') }}
+      - name: cargo clippy -D warnings
+        run: cargo clippy --workspace --all-targets -- -D warnings
+
+  guards:
+    name: guards (grep-based invariant checks)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Run all guard scripts
+        run: |
+          set -e
+          for script in scripts/check-*.sh; do
+            echo "::group::$script"
+            "$script"
+            echo "::endgroup::"
+          done
+
+  build-and-test:
+    name: anchor build, aegis-math tests, workspace tests, smoke test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install pinned Rust toolchain
+        run: rustup show
+
+      - name: Cache cargo registry and target
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            ~/.local/share/solana
+            ~/.avm
+            target
+          key: ${{ runner.os }}-cargo-build-${{ hashFiles('**/Cargo.lock') }}
+
+      - name: Install Agave (Solana) CLI
+        run: |
+          sh -c "$(curl -sSfL https://release.anza.xyz/stable/install)"
+          echo "$HOME/.local/share/solana/install/active_release/bin" >> "$GITHUB_PATH"
+
+      - name: Install avm and pinned Anchor CLI
+        run: |
+          cargo install --git https://github.com/solana-foundation/anchor avm --force
+          echo "$HOME/.cargo/bin" >> "$GITHUB_PATH"
+          "$HOME/.cargo/bin/avm" install 1.2.0
+          "$HOME/.cargo/bin/avm" use 1.2.0
+
+      - name: Generate a local wallet (no funds, no secret — offline keypair only)
+        run: solana-keygen new --no-bip39-passphrase --force -o ~/.config/solana/id.json
+
+      - name: anchor build (also generates the IDL)
+        run: anchor build
+
+      - name: Verify the IDL was generated
+        run: test -f target/idl/aegis.json
+
+      - name: cargo test -p aegis-math
+        run: cargo test -p aegis-math
+
+      - name: cargo test --workspace (includes the offline LiteSVM smoke test)
+        run: cargo test --workspace

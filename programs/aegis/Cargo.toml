@@ -1,0 +1,30 @@
+[package]
+name = "aegis"
+version = "0.1.0"
+description = "Aegis Protocol on-chain program"
+license = "Apache-2.0"
+edition.workspace = true
+rust-version.workspace = true
+
+[lib]
+crate-type = ["cdylib", "lib"]
+name = "aegis"
+
+[features]
+default = []
+cpi = ["no-entrypoint"]
+no-entrypoint = []
+no-log-ix-name = []
+# Required in Anchor 1.x or IDL generation silently breaks (see docs/ecosystem-research.md §1).
+idl-build = ["anchor-lang/idl-build"]
+anchor-debug = []
+custom-heap = []
+custom-panic = []
+
+[dependencies]
+# Anchor re-exports what a program needs of solana-program; do not add solana-program
+# directly (it causes crate-version conflicts and Anchor warns on it).
+anchor-lang = "1.2.0"
+
+[lints.rust]
+unexpected_cfgs = { level = "warn", check-cfg = ['cfg(target_os, values("solana"))'] }

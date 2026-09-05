@@ -1,7 +1,7 @@
 # Aegis — Current Ecosystem & Tooling Research
 
-**Research date: 2026-09-04.**
-**Status: FROZEN for Phase 0. Re-verification is a mandatory Phase 1 task (see below).**
+**Research date: 2026-09-04. Re-verified: 2026-09-05/06 (Phase 1).**
+**Status: FROZEN for Phase 0. Phase 1 re-verification is recorded in §12 below.**
 
 This document records what was verified about the Solana ecosystem *at the research date*, which
 sources were used, and which Aegis design decisions depend on each finding. Nothing in Aegis may be
@@ -308,7 +308,102 @@ file, note the delta in `docs/project-status.md`, and open an ADR if a decision 
 
 ---
 
-## 12. Open verification items carried into later phases
+## 12. Phase 1 re-verification (2026-09-05/06) — RV-1 and RV-2 resolved
+
+Every command below was actually run on the implementation machine (macOS/aarch64); raw output is
+also pasted into `docs/project-status.md`. Nothing here is copied from a tutorial.
+
+### 13.1 Installed toolchain (before → after)
+
+| Tool | §0 recorded (2026-09-04) | Actually installed (2026-09-05/06) |
+|---|---|---|
+| `rustc` / `cargo` | 1.88.0 | **1.98.1** (upgraded — see §13.4) |
+| `solana` (Agave CLI) | 2.2.21 | **4.2.2** installed via the stable installer; **`anchor build` itself then switched the active release to 3.1.10** (Anchor 1.0.2's own documented verified toolchain) — see §13.4 |
+| `avm` | not installed | **1.1.2** |
+| `anchor` | not installed | **1.2.0** (newer than the 1.1.2 this document assumed — see §13.2) |
+| `surfpool` | not installed | **1.5.0** — matches §5 exactly |
+| `node` | v22.12.0 | v22.12.0 (unchanged) |
+
+### 13.2 Anchor / crates.io deltas from §1 and §5
+
+crates.io's own metadata (`max_stable_version` / `default_version`, fetched directly, not assumed)
+as of 2026-09-05:
+
+| Crate | This doc (§1/§5) said | Actually resolves to |
+|---|---|---|
+| `anchor-lang` | 1.1.2 | **1.2.0** (max_stable_version; a `2.0.0-rc.1` pre-release also exists — not used) |
+| `anchor-spl` | (implied 1.1.2) | **1.2.0** |
+| `litesvm` | 0.16.0 | **0.16.0** — confirmed exact |
+| `mollusk-svm` | `UNVERIFIED` | **0.15.1** — RV-2 resolved: the crate is named `mollusk-svm` (not `mollusk`), current stable 0.15.1, repo `github.com/anza-xyz/mollusk` |
+| `pyth-solana-receiver-sdk` | 2.0.0 | **2.0.0** — confirmed exact |
+| `@solana/kit` | 8.2.0 | **8.2.0** — confirmed exact |
+| `@anchor-lang/core` | (unspecified) | **1.2.0** |
+
+None of these deltas are architecturally significant — Anchor is still the 1.x line with the same
+breaking changes already recorded in §1 (dup-by-default, `idl-build` required, `@anchor-lang/core`,
+etc.). This is a version-number update, not a finding that invalidates a Phase 0 decision.
+
+One repository-identity delta worth recording: `anchor-lang`'s crates.io metadata now lists
+`repository = "https://github.com/otter-sec/anchor"` (not `solana-foundation/anchor`). The install
+command in `docs/phases/phase-01-foundation.md` (`cargo install --git
+https://github.com/solana-foundation/anchor avm --force`) **still works** — `solana-foundation/anchor`
+resolved correctly during installation — so no change was needed, but a future phase should not be
+surprised if the canonical URL moves again.
+
+### 13.3 RV-1 resolved — `solana-*` crate versions under `anchor-lang 1.2.0`
+
+Read directly from this repository's own `Cargo.lock` after `anchor build` + `cargo test --workspace`
+resolved the full dependency graph (see `docs/project-status.md` for the extraction command and full
+list). The headline finding: **the dependency graph genuinely contains two coexisting major-version
+lines for the same logical types**, mid-rename:
+
+- `solana-pubkey` resolves to **both 3.0.0 and 4.2.1** simultaneously. In 4.2.1, `solana-pubkey` is a
+  thin compatibility shim: `pub use solana_address::Address as Pubkey;` — i.e. `Pubkey` is now
+  literally a type alias for `solana_address::Address`, not a distinct type.
+- `solana-address` resolves to **both 1.1.0 and 2.6.1**.
+- `solana-transaction` resolves to **4.1.6**; the feature that gates `VersionedTransaction::try_new`
+  was renamed from `bincode` (used in older 3.x-line examples, including what `anchor init`'s own
+  generated `programs/*/Cargo.toml` dev-dependency comment implies) to **`wincode`** in the 4.x line.
+- `solana-message` resolves to **4.4.1** in the workspace's resolution (litesvm 0.16.0 itself declares
+  `solana-message = "4.2.4"`).
+- `solana-keypair` (**3.1.2**) and `solana-signer` (**3.0.1**) stayed on the 3.x line litesvm expects.
+
+**Practical implication, recorded so the next phase does not rediscover it the hard way:** any crate
+that talks to LiteSVM 0.16.0's public API must depend on the *same major line LiteSVM itself declares*
+for `solana-message`, `solana-transaction`, `solana-pubkey`/`solana-address`, `solana-keypair`, and
+`solana-signer` — read from litesvm's own `Cargo.toml` in the local registry cache, not assumed from
+an example. Depending on a different major version of the same crate produces two structurally
+identical but nominally distinct Rust types, and the compiler error only says "no associated function"
+or "trait not implemented," not "your dependency versions are misaligned." `crates/aegis-test-kit`'s
+and the workspace root's `Cargo.toml` pin exactly the versions verified this way (see their inline
+comments).
+
+### 13.4 Two additional real findings, not previously recorded
+
+1. **`avm` (and therefore `anchor-cli`, built from source) requires `rustc >= 1.91`.** The
+   `rustc 1.88.0` this document called "Adequate" in §0 does **not** satisfy this — `cargo install
+   --git ... avm` fails outright with `cargo-platform@0.3.3 requires rustc 1.91`. Phase 1 upgraded the
+   host toolchain via `rustup update stable` to **1.98.1**, which is what this repository's
+   `rust-toolchain.toml` now pins.
+2. **The workspace's declared `rust-version` must stay below whatever rustc ships inside Solana's
+   bundled platform-tools**, not below the host rustc. `cargo-build-sbf` cross-compiles on-chain code
+   with a separate, older rustc bundled in platform-tools (`1.95.0-dev` at the time of writing);
+   declaring `rust-version = "1.98.1"` (the *host* compiler) in `[workspace.package]` makes `anchor
+   build` fail with `rustc 1.95.0-dev is not supported ... requires rustc 1.98.1`, even though nothing
+   is actually wrong with the code. This repository's workspace `Cargo.toml` deliberately pins
+   `rust-version = "1.85.0"` — comfortably under the bundled compiler — with a comment explaining why.
+   This is a toolchain-plumbing fact, not an architectural one, but it is exactly the kind of thing
+   "trust the installed CLI's own output over any blog post" (§0) is warning about.
+
+### 13.5 Real target triple used for the on-chain build
+
+`anchor build` (Anchor 1.2.0, Solana CLI/platform-tools resolved to 3.1.10) compiles the program for
+target `sbpfv3-solana-solana`, not the historically-remembered `bpfel-unknown-unknown`. Recorded here
+because it is exactly the kind of detail a memorized pattern gets wrong silently.
+
+---
+
+## 13. Open verification items carried into later phases
 
 | ID | Question | Gate |
 |---|---|---|

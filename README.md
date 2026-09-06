@@ -2,13 +2,15 @@
 
 **A risk-first, isolated-market, overcollateralized lending protocol on Solana.**
 
-> **STATUS: PHASE 3 — COLLATERAL FLOWS. NO LENDING PROTOCOL LOGIC EXISTS.**
-> Aegis is under construction. Phase 3 adds real collateral custody on top of Phase 2's account
-> model: `deposit_collateral` (no oracle, no pause, `Market` read-only, measured-delta accounting
-> on both SPL Token and Token-2022 transfer-fee mints), `withdraw_collateral` (the zero-debt path
-> only — a position with outstanding `borrow_shares` is refused with `OracleNotYetAvailable`, a
-> hard sequencing gate rather than a bypass), and `close_position`. There is still no supply,
-> borrow, repay, interest, oracle, or liquidation — those begin at Phases 4–6. See
+> **STATUS: PHASE 4 — LENDING, BORROWING & INTEREST. NO ORACLE OR LIQUIDATION LOGIC EXISTS.**
+> Aegis is under construction. Phase 4 adds the economic core on top of Phase 3's custody flows:
+> `supply`/`withdraw` (share-based accounting with virtual-offset inflation defense), `repay`
+> (no oracle, no owner signature, unpausable, clamped to actual debt), permissionless
+> `accrue_interest` (utilization-driven piecewise-linear rates, Taylor-series compounding,
+> protocol fees minted as supply shares), and a structurally complete but **hard-gated** `borrow`
+> that always returns `OracleNotYetAvailable` — there is no oracle account anywhere in its account
+> list, so no code path can permit an actual borrow without a price check. There is still no
+> oracle, health factor, or liquidation — those begin at Phases 5–6. See
 > [`docs/project-status.md`](docs/project-status.md) for the authoritative state of every
 > component.
 
@@ -87,23 +89,26 @@ Native Solana Rust and Pinocchio appear in scoped, benchmarked labs — not in p
 
 ## Quickstart
 
-**Right now (Phase 3):** on top of everything Phase 2 shipped, `programs/aegis` implements
-`deposit_collateral` (no oracle, no pause check, `Market` never written, measured-delta crediting
-via a mandatory post-CPI vault reload), `withdraw_collateral` (owner-signed, zero-debt path only —
-any `borrow_shares > 0` is refused with `OracleNotYetAvailable`, never a placeholder price), and
-`close_position` (exact-zero balance checks, Anchor's `close =`, safe against revival). A direct
-token transfer into a vault, outside these instructions, is never credited to any position
-(INV-CUS-08) — the vault balance is never a source of truth for individual ownership. There is
-still no supply, borrow, repay, interest accrual, oracle, or liquidation, and no SDK/app yet.
+**Right now (Phase 4):** on top of everything Phase 2/3 shipped, `programs/aegis` implements
+`supply`/`withdraw` (exactly-one-of `assets`/`shares`, share accounting via `crates/aegis-math`'s
+virtual-offset conversions, `withdraw` bounded by free liquidity), `repay` (no owner signature, no
+oracle, unpausable, clamped so it never pulls more than the actual debt), standalone permissionless
+`accrue_interest` (utilization → piecewise-linear rate → third-order Taylor compounding, protocol
+fees minted as ordinary supply shares to the fee recipient's position), and `borrow` — present
+structurally, but hard-gated to always return `OracleNotYetAvailable` before touching any state,
+since no oracle account exists in Phase 4 at all. `A-SHARE-01` demonstrates the first-depositor
+share-inflation attack succeeding without the virtual offsets and becoming a net *loss* for the
+attacker with them. There is still no oracle, health factor, or liquidation, and no SDK/app yet.
 
 ```bash
 make setup   # verify the pinned toolchain (Solana CLI, Anchor, Surfpool, Node) is installed
 make build   # anchor build — compiles `programs/aegis` and generates its IDL
 make test    # cargo test --workspace — offline, no network, no secrets (the load-bearing command)
-make demo    # SPL and Token-2022 transfer-fee collateral deposits (requested vs. credited),
-             # INV-CUS-02 after every step, a zero-debt withdrawal, and closing a position with
-             # rent reclaimed — offline against an in-process LiteSVM
-             # (see docs/phases/phase-03-collateral.md "Demo")
+make demo    # lender supplies; borrow is attempted and correctly refused; debt is seeded via
+             # TEST-KIT state injection; 30 days are warped; interest accrues; utilization/borrow
+             # APY/supply APY are printed; protocol fee shares accrue; the lender withdraws
+             # principal plus interest — offline against an in-process LiteSVM
+             # (see docs/phases/phase-04-lending.md "Demo")
 ```
 
 `make fuzz`, `make bench`, and `make app` exist as stubs that name the phase that implements them

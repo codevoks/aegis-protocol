@@ -7,7 +7,7 @@ resolution = true
 skip-lint = false
 
 [programs.localnet]
-aegis = "5emasbxEz9UGdeur6awt71JPE8ptvr716MUoVagaAPa1"
+aegis = "2GtoBADM175vkjf5UYpbD198Ry1cJadXMGo8sCQvXndh"
 
 [provider]
 cluster = "localnet"

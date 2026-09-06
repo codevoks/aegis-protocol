@@ -8,7 +8,7 @@
 
 use anchor_lang::prelude::*;
 
-declare_id!("5emasbxEz9UGdeur6awt71JPE8ptvr716MUoVagaAPa1");
+declare_id!("2GtoBADM175vkjf5UYpbD198Ry1cJadXMGo8sCQvXndh");
 
 #[program]
 pub mod aegis {

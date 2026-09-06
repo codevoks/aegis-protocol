@@ -1,8 +1,8 @@
 # Aegis — Project Status
 
 **Last updated: 2026-09-06**
-**Current phase: Phase 1 — Toolchain, Repository and CI Foundation — COMPLETE**
-**Next phase: Phase 2 — State, PDAs & custody primitives — NOT STARTED**
+**Current phase: Phase 2 — State, PDAs & Custody Primitives — COMPLETE**
+**Next phase: Phase 3 — Collateral Flows — NOT STARTED**
 
 > This file is the first thing any contributor or model reads after `AGENTS.md`. It must always
 > reflect reality. **"Implemented" never means "verified."** The five states below are tracked
@@ -31,7 +31,7 @@ rounded up.
 |---|---|---|---|
 | 0 | Planning & design | ✅ **COMPLETE** | `phase-00-planning` |
 | 1 | Toolchain & repository foundation | ✅ **COMPLETE** | `phase-01-foundation` |
-| 2 | State, PDAs & custody primitives | ⬜ NOT STARTED | — |
+| 2 | State, PDAs & custody primitives | ✅ **COMPLETE** | `phase-02-state` |
 | 3 | Collateral flows | ⬜ NOT STARTED | — |
 | 4 | Lending, borrowing & interest | ⬜ NOT STARTED | — |
 | 5 | Oracle | ⬜ NOT STARTED | — |
@@ -44,7 +44,10 @@ rounded up.
 | 12 | Governance & upgrades | ⬜ NOT STARTED | — |
 | 13 | Integration & release | ⬜ NOT STARTED | — |
 
-**Phase 2 has NOT been started.** Nothing beyond a single no-op `ping` instruction exists on-chain.
+**Phase 2 is complete.** `Protocol`, `Market`, `Position`, both custody vaults, and the Token-2022
+extension policy engine exist on-chain, exactly as frozen in `account-model.md` and
+`token-compatibility.md`. No token transfer, deposit, withdrawal, supply, borrow, repay, interest,
+oracle, or liquidation logic exists yet — those begin at Phases 3–6.
 
 ## Component status
 
@@ -56,15 +59,16 @@ rounded up.
 | `aegis-math` — health | ⬜ | ⬜ | ⬜ | ✅ | ⬜ |
 | `aegis-math` — liquidation | ⬜ | ⬜ | ⬜ | ✅ | ⬜ |
 | `programs/aegis` — `ping` (toolchain proof only) | ✅ | ✅ | ⬜ | ✅ | ⬜ |
-| `Protocol` / `Market` / `Position` | ⬜ | ⬜ | ⬜ | ✅ | ⬜ |
-| Vaults & custody | ⬜ | ⬜ | ⬜ | ✅ | ⬜ |
-| Token-2022 policy engine | ⬜ | ⬜ | ⬜ | ✅ | ⬜ |
+| `Protocol` / `Market` / `Position` | ✅ | ✅ | ✅ | ✅ | ⬜ |
+| `initialize_protocol` / `create_market` / `init_position` | ✅ | ✅ | ✅ | ✅ | ⬜ |
+| Vaults & custody | ✅ | ✅ | ✅ | ✅ | ⬜ |
+| Token-2022 policy engine | ✅ | ✅ | ✅ | ✅ | ⬜ |
 | Collateral instructions | ⬜ | ⬜ | ⬜ | ✅ | ⬜ |
 | Lend/borrow instructions | ⬜ | ⬜ | ⬜ | ✅ | ⬜ |
 | Oracle (Pyth adapter) | ⬜ | ⬜ | ⬜ | ✅ | ⬜ |
 | Liquidation & bad debt | ⬜ | ⬜ | ⬜ | ✅ | ⬜ |
 | Governance & migrations | ⬜ | ⬜ | ⬜ | ✅ | ⬜ |
-| `aegis-test-kit` (LiteSVM bootstrap only) | ✅ | ✅ | ⬜ | ✅ | ⬜ |
+| `aegis-test-kit` (mints, market/position lifecycle, account decoding) | ✅ | ✅ | ✅ | ✅ | ⬜ |
 | Invariant fuzzer | ⬜ | ⬜ | ⬜ | ✅ | ⬜ |
 | CU benchmarks | ⬜ | ⬜ | ⬜ | ✅ | ⬜ |
 | `labs/` (Anchor/native/Pinocchio) | ⬜ | ⬜ | ⬜ | ✅ | ⬜ |
@@ -77,13 +81,36 @@ the remote — see **Git** at the end of this document.
 
 ## Invariant status
 
-87 invariants defined across 12 groups (9 marked **[GLOBAL]**). Phase 1 does not test any protocol
-invariant (there is no protocol yet); it tests two Phase-1-scoped, non-numbered engineering rules by
-grep guard: **T-16** (`overflow-checks = true`) and **INV-ACC-10** (no floats), plus **INV-LIFE-01**
-(no `init_if_needed`) and **T-13** (no `dup`) and **INV-ORA-06** (no slot-based time), all as guard
-scripts rather than runtime invariants, because there is no runtime state yet for them to guard.
-**0 of the 87 numbered protocol invariants are implemented or tested** — this is correct and expected
-at the end of Phase 1; they begin at Phase 2. See `docs/invariants.md` for the per-phase assignment.
+87 invariants defined across 12 groups (9 marked **[GLOBAL]**). Phase 1 tested none of the 87
+numbered invariants (there was no protocol yet). Phase 2 is the first phase to test numbered
+invariants from `docs/invariants.md` §I (state lifecycle) and §J (administrative safety), plus the
+account-model-local invariant catalogue in `account-model.md` §11:
+
+| ID | Tested by |
+|---|---|
+| INV-LIFE-01 | `A-LIFE-01` (`reinitializing_protocol_fails`, `reinitializing_market_fails`, `reinitializing_position_fails`) |
+| INV-LIFE-04 | `scripts/check-no-close.sh` (new CI-NOCLOSE guard) |
+| INV-LIFE-05 | `A-LIFE-03` (`non_canonical_bump_is_rejected`) and every `assert_eq!(x.bump, expected_bump)` in `tests/phase2_state.rs` |
+| INV-LIFE-06 | `U-LIFE-02` (`seed_prefixes_are_pairwise_distinct`) |
+| INV-ADM-05 | `A-ADM-04` (`out_of_bounds_market_parameters_are_rejected`) |
+| INV-LIQ-06 | `A-ADM-04`'s derived-bound case, plus `derived_liquidation_bound_rejects_plausible_but_unsafe_params` (Tier 1, `aegis` crate) |
+| INV-ACCT-01..07, 09 (`account-model.md` §11) | `tests/phase2_state.rs`, `tests/phase2_adversarial.rs` — see the Phase 2 evidence section below for the exact mapping |
+
+**INV-ACCT-08** (`deposit_collateral`/`withdraw_collateral` do not declare `Market` writable) is
+**not yet testable**: its subject instructions are Phase 3 scope and do not exist yet. This is
+recorded here explicitly rather than silently skipped; it will be tested when Phase 3 ships those
+instructions.
+
+**Naming note:** `account-model.md` §11 defines a 9-item "Account-model invariant summary" using an
+`INV-ACCT-*` prefix, distinct from `invariants.md`'s own master `INV-ACC-*` series (accounting,
+§C) — the two documents use similar-looking prefixes for different, only partially overlapping
+content (e.g. `INV-ACCT-09` and `INV-ACC-11` both concern `_reserved` bytes being zero). Phase 2's
+task instructions referenced "`INV-ACCT-01..09`", which only exist in `account-model.md` §11; all
+nine are addressed above/below. Nothing in either document was edited to resolve this — it is
+noted here as a cross-reference clarification, not a frozen-document conflict.
+
+Still **0 of the 87 numbered `invariants.md` invariants assigned to later phases** are implemented
+or tested — expected at this point; see `docs/invariants.md` for the full per-phase assignment.
 
 ---
 
@@ -220,6 +247,451 @@ cross-market vault curation layer · transfer-hook support behind a hook allowli
 No ADR was added or changed in Phase 1. Every deviation encountered (toolchain versions, feature
 names, target triples) was a verified implementation detail, not an architectural one — see the
 Environment section above and `docs/ecosystem-research.md` §12 for the full reasoning trail.
+
+No ADR was added or changed in Phase 2 either. Two implementation-level API deltas from what
+`ecosystem-research.md` had verified in Phase 1 are recorded in that document's new §14 (crate
+names `spl-token-interface`/`spl-token-2022-interface`, not `spl-token`/`spl-token-2022`; LiteSVM
+ships real embedded SPL Token / Token-2022 program bytecode; `CpiContext::new` takes a `Pubkey`,
+not an `AccountInfo`) — none of them change a Phase 0 architectural decision.
+
+---
+
+## Phase 2 — evidence
+
+### 1. Account model
+
+`Protocol`, `Market`, and `Position` (`programs/aegis/src/state/{protocol,market,position}.rs`)
+transcribe `account-model.md` §3–5 field-for-field: same order, same types, same `_reserved`
+width. Each carries a `LEN` constant computed by summing the documented field groups (not
+`size_of::<T>()`, which would reflect Rust's in-memory layout rather than the Borsh-serialized,
+Anchor-discriminator-prefixed account size that actually lands on-chain):
+
+| Account | `LEN` (incl. 8-byte discriminator) | `account-model.md` figure |
+|---|---|---|
+| `Protocol` | 202 | 202 (exact) |
+| `Market` | 640 | "~633 ≈ 641" (approximate in the doc; 640 is the exact sum of the same field list) |
+| `Position` | 145 | 145 (exact) |
+
+Evidence that these constants match reality, not just each other:
+
+```
+$ cargo test -p aegis len_matches_account_model_spec
+test state::market::tests::len_matches_account_model_spec ... ok
+test state::position::tests::len_matches_account_model_spec ... ok
+test state::protocol::tests::len_matches_account_model_spec ... ok
+```
+
+And that the account actually produced by `create_market`/`initialize_protocol`/`init_position` is
+exactly that size (`U-ACCT-02` — no realloc is ever needed) — from `tests/phase2_state.rs`:
+```rust
+let account = svm.get_account(&protocol_pubkey).expect("protocol account exists");
+assert_eq!(account.data.len(), Protocol::LEN);
+...
+assert_eq!(market_account.data.len(), Market::LEN);
+...
+assert_eq!(position_account.data.len(), Position::LEN);
+```
+All three assertions pass (see the full `cargo test --workspace` transcript in §6 below).
+
+`_reserved` zero (`U-ACCT-01`): every account is constructed with `_reserved: [0u8; N]` explicitly
+at initialization (never left uninitialized), and each lifecycle test asserts it directly after
+fetch-and-decode, e.g. `assert_eq!(protocol._reserved, [0u8; 64]);`, `assert_eq!(market._reserved,
+[0u8; 64]);`, `assert_eq!(position._reserved, [0u8; 32]);` — all in `tests/phase2_state.rs`.
+
+Seeds (`programs/aegis/src/constants.rs`): `PROTOCOL_SEED = b"protocol"`, `MARKET_SEED =
+b"market"`, `POSITION_SEED = b"position"`, `COLLATERAL_VAULT_SEED = b"cvault"`, `LOAN_VAULT_SEED =
+b"lvault"` — five distinct literal prefixes, asserted pairwise-distinct by
+`seed_prefixes_are_pairwise_distinct` (`U-LIFE-02`). Every PDA is derived canonically
+(`find_program_address` at creation; `bump = <stored>` on every later read) — never a
+caller-supplied bump; proven by `A-LIFE-03` (below).
+
+### 2. Instructions
+
+`initialize_protocol`, `create_market`, `init_position` — implemented exactly to
+`instruction-catalogue.md` §1, §6, §9: same accounts, same preconditions, same state transitions,
+same events. No `set_*` admin mutation instruction exists (Phase 12 scope); no deposit, withdrawal,
+supply, borrow, repay, interest, oracle, or liquidation instruction exists (Phases 3–6 scope) —
+confirmed by `grep -rniE "pub fn (deposit|withdraw|borrow|repay|liquidate|supply|accrue)"
+programs/aegis/src/`, which returns nothing.
+
+### 3. Custody
+
+Both vaults (`programs/aegis/src/token/vault.rs`) are created by hand — not Anchor's `#[account(init,
+token::...)]` sugar — specifically so `ImmutableOwner` can be added to Aegis's own Token-2022
+vaults (`token-compatibility.md` §2, §5.4), which that sugar has no attribute for. Order of
+operations for a Token-2022 vault: `system_program::create_account` (sized via
+`ExtensionType::try_calculate_account_len`, computed from what the mint's own extensions require
+via `ExtensionType::get_required_init_account_extensions` plus `ImmutableOwner`) →
+`initialize_immutable_owner` → `initialize_account3` (must be last: it marks the account
+`Initialized`). A legacy SPL Token vault is always exactly 165 bytes; never hardcoded — the size
+is computed by the same function either way, branching only on which token program owns the mint.
+
+Evidence (`A-CUS-03`, INV-ACCT-04/05, from `tests/phase2_state.rs`):
+```rust
+let cvault_account = svm.get_account(&collateral_vault).expect("collateral vault exists");
+assert_eq!(cvault_account.owner, spl_token_interface::ID);
+assert_eq!(cvault_account.data.len(), 165, "legacy SPL vault must be exactly 165 bytes");
+let cvault_state = fetch_token_account_base(&svm, &collateral_vault);
+assert_eq!(cvault_state.mint, collateral_mint);
+assert_eq!(cvault_state.owner, market_pubkey, "vault authority must be the Market PDA");
+```
+And for a Token-2022 transfer-fee collateral vault (`tests/phase2_token_policy.rs`): the vault is
+182 bytes (165 + 1 account-type marker + TLV entries for `TransferFeeAmount` and `ImmutableOwner`),
+confirmed both by direct assertion (`data.len() > 165`) and printed by `make demo` (§8 below).
+
+Mint/token-program pinning (T-11, `A-TOK-08`-adjacent): `InterfaceAccount<'info, Mint>` only
+proves a mint's owner is *one of* SPL Token or Token-2022; `create_market`'s handler additionally
+requires `*mint.owner == token_program.key()` for the *specific* program passed for that asset.
+`wrong_token_program_for_mint_is_rejected` proves a legacy mint claimed under the Token-2022
+program is rejected with `TokenProgramMintMismatch`.
+
+### 4. Token policy
+
+`programs/aegis/src/token/policy.rs` implements the positive allowlist from
+`token-compatibility.md` §2 exactly: `evaluate_mint` enumerates a mint's Token-2022 TLV extension
+list (empty, trivially, for a classic SPL Token mint — the same code path handles both), matches
+each against an explicit `MetadataPointer | TokenMetadata | GroupPointer | TokenGroup |
+GroupMemberPointer | TokenGroupMember | InterestBearingConfig | ScaledUiAmount` accept-arm, a
+role-gated `TransferFeeConfig` arm, and a catch-all `_ => reject` — so an extension shipped by a
+future Token-2022 release that this crate's dependency does not even know how to decode fails
+closed automatically (proven by `unrecognized_extension_mint_rejected`, which is rejected with
+`InvalidMintAccountData` because the underlying `spl-token-2022-interface` TLV parser itself
+cannot decode an unrecognized type code — a byproduct of the library failing closed, not a
+misclassification on Aegis's part).
+
+`freeze_authority` (a base-mint field, independent of extensions): `create_market` requires
+`ack_freeze_authority == true` whenever either mint has one, and records the fact in
+`market.flags` bit 0 — proven by `freeze_authority_requires_acknowledgement` (rejects
+unacknowledged, accepts acknowledged, asserts the flag).
+
+`DefaultAccountState` is treated as unconditionally Tier C (rejected regardless of the configured
+initial state), not conditionally on `state == Frozen`: `token-compatibility.md` §2's table entry
+is a flat Tier C row; reading "DefaultAccountState = Frozen" as a value-conditional carve-out would
+require the document to also specify the `Initialized` case, which it does not. This is a reading
+of the frozen document, not a deviation from it, and is the more conservative (fail-closed) of the
+two readings besides.
+
+### 5. Parameter security
+
+All bounds from `economic-model.md` §5 (`programs/aegis/src/state/market.rs::{validate_risk_params,
+validate_irm_params, validate_oracle_config}`), including the derived liquidation-safety bound:
+
+```rust
+let bonus_factor = WAD.checked_add(liq_bonus).ok_or(AegisError::ArithmeticOverflow)?;
+let threshold_times_bonus = mul_div_floor(liq_threshold, bonus_factor, WAD).map_err(AegisError::from)?;
+require!(threshold_times_bonus < WAD, AegisError::LiquidationBonusExceedsThresholdBound);
+```
+computed through `aegis-math`'s `mul_div_floor` (256-bit intermediate), never a naive multiply.
+`liq_bonus` is already bounded to `<= MAX_LIQ_BONUS` (0.25 WAD) before this addition, so
+`WAD.checked_add(liq_bonus)` cannot overflow — the bound check ordering itself makes the overflow
+path unreachable, rather than merely trapping it.
+
+Evidence of the derived bound firing on an *otherwise-plausible* parameter set (`A-ADM-04`'s
+specific requirement): `liq_bonus = 0.24 WAD` (within the flat `MAX_LIQ_BONUS` on its own) combined
+with `liq_threshold = 0.85 WAD` gives `0.85 × 1.24 = 1.054 > 1`, rejected with
+`LiquidationBonusExceedsThresholdBound` — both as a Tier 1 `aegis-math`-adjacent unit test
+(`derived_liquidation_bound_rejects_plausible_but_unsafe_params`, in `state/market.rs`) and as a
+full on-chain `create_market` call (`out_of_bounds_market_parameters_are_rejected`). The reference
+parameter set from `economic-model.md` §5.1 (`max_ltv=0.75, LT=0.80, b=0.05, ...`) is itself
+accepted both at the unit level and on-chain (`reference_parameter_set_is_accepted_on_chain`),
+proving the sweep is testing real bounds rather than an over-tight validator that rejects
+everything.
+
+### 6. Tests
+
+```
+$ cargo test --workspace
+running 20 tests
+test state::market::tests::close_factor_below_minimum_is_rejected ... ok
+test state::market::tests::derived_liquidation_bound_rejects_plausible_but_unsafe_params ... ok
+test state::market::tests::fee_above_max_is_rejected ... ok
+test state::market::tests::irm_rate_exceeding_max_is_rejected ... ok
+test state::market::tests::irm_u_kink_out_of_range_is_rejected ... ok
+test state::market::tests::irm_params_reference_set_is_valid ... ok
+test state::market::tests::len_matches_account_model_spec ... ok
+test state::market::tests::full_liq_hf_zero_is_rejected ... ok
+test state::market::tests::liq_bonus_above_max_is_rejected ... ok
+test state::market::tests::liq_protocol_fee_above_max_is_rejected ... ok
+test state::market::tests::max_ltv_must_be_below_liq_threshold ... ok
+test state::market::tests::oracle_config_conf_bps_out_of_range_is_rejected ... ok
+test state::market::tests::oracle_config_price_age_out_of_range_is_rejected ... ok
+test state::market::tests::oracle_config_reference_is_valid ... ok
+test state::market::tests::reference_parameter_set_is_valid ... ok
+test state::market::tests::zero_min_debt_is_rejected ... ok
+test state::position::tests::len_matches_account_model_spec ... ok
+test state::protocol::tests::len_matches_account_model_spec ... ok
+test token::policy::tests::transfer_fee_mint_requires_transfer_fee_amount_and_immutable_owner ... ok
+test token::policy::tests::vault_extensions_always_include_immutable_owner ... ok
+test result: ok. 20 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running unittests src/lib.rs (target/debug/deps/aegis_math-...)
+running 5 tests (fixed::tests::{division_by_zero, ceil_only_rounds_up_on_a_nonzero_remainder,
+known_vectors, large_multiplication_survives_256_bit_intermediate, result_overflow})
+test result: ok. 5 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/property.rs
+running 3 tests (never_panics, floor_le_ceil_le_floor_plus_one, matches_bignum_reference)
+test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.02s
+
+     Running unittests src/lib.rs (target/debug/deps/aegis_test_kit-...)
+running 0 tests
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/phase2_adversarial.rs
+running 8 tests
+test reinitializing_protocol_fails ... ok
+test attacker_owned_fake_protocol_account_is_rejected ... ok
+test non_admin_cannot_create_market ... ok
+test reinitializing_market_fails ... ok
+test reference_parameter_set_is_accepted_on_chain ... ok
+test reinitializing_position_fails ... ok
+test non_canonical_bump_is_rejected ... ok
+test out_of_bounds_market_parameters_are_rejected ... ok
+test result: ok. 8 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.16s
+
+     Running tests/phase2_state.rs
+running 5 tests
+test seed_prefixes_are_pairwise_distinct ... ok
+test protocol_initializes_with_expected_admin_and_layout ... ok
+test create_market_does_not_write_protocol ... ok
+test create_market_spl_and_position_lifecycle ... ok
+test two_markets_same_asset_pair_different_config_id_coexist ... ok
+test result: ok. 5 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.07s
+
+     Running tests/phase2_token_policy.rs
+running 9 tests
+test transfer_hook_mint_rejected_as_collateral ... ok
+test tier_a_extensions_are_accepted_and_recorded ... ok
+test mint_close_authority_mint_rejected ... ok
+test default_account_state_frozen_mint_rejected ... ok
+test permanent_delegate_mint_rejected ... ok
+test unrecognized_extension_mint_rejected ... ok
+test freeze_authority_requires_acknowledgement ... ok
+test transfer_fee_mint_accepted_as_collateral_rejected_as_loan_asset ... ok
+test wrong_token_program_for_mint_is_rejected ... ok
+test result: ok. 9 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.11s
+
+     Running tests/smoke.rs
+running 1 test
+test ping_deploys_and_invokes_offline ... ok
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.05s
+
+   Doc-tests aegis / aegis_math / aegis_test_kit — 0 tests each, ok
+```
+**51 tests, 0 failures.** (The full, un-elided per-dependency compiler output — several hundred
+lines of crate names on a from-scratch build — was inspected directly during implementation; it is
+not reproduced here for length, matching Phase 1's convention above.)
+
+Required test IDs, all passing, and where each lives:
+
+| ID | Test | File |
+|---|---|---|
+| `U-ACCT-01` | `_reserved` zero after creation | `tests/phase2_state.rs` (multiple assertions) |
+| `U-ACCT-02` | Account size exactly `LEN`, no realloc | `tests/phase2_state.rs` (multiple assertions) |
+| `U-LIFE-02` | Seed prefixes pairwise distinct | `tests/phase2_state.rs::seed_prefixes_are_pairwise_distinct` |
+| `A-AUTH-01` | Non-admin `create_market` fails | `tests/phase2_adversarial.rs::non_admin_cannot_create_market` |
+| `A-AUTH-06` | Attacker-owned fake `Protocol` rejected | `tests/phase2_adversarial.rs::attacker_owned_fake_protocol_account_is_rejected` |
+| `A-LIFE-01` | Reinit fails (Protocol, Market, Position) | `tests/phase2_adversarial.rs::reinitializing_{protocol,market,position}_fails` |
+| `A-LIFE-03` | Non-canonical bump fails | `tests/phase2_adversarial.rs::non_canonical_bump_is_rejected` |
+| `A-ADM-04` | Out-of-bounds parameter sweep incl. derived bound | `tests/phase2_adversarial.rs::out_of_bounds_market_parameters_are_rejected` |
+| `A-CUS-03` | Vault authority is the `Market` PDA | `tests/phase2_state.rs::create_market_spl_and_position_lifecycle` |
+| `A-TOK-01` | `TransferHook` rejected | `tests/phase2_token_policy.rs::transfer_hook_mint_rejected_as_collateral` |
+| `A-TOK-02` | `PermanentDelegate` rejected | `tests/phase2_token_policy.rs::permanent_delegate_mint_rejected` |
+| `A-TOK-03` | `MintCloseAuthority` rejected | `tests/phase2_token_policy.rs::mint_close_authority_mint_rejected` |
+| `A-TOK-04` | `DefaultAccountState = Frozen` rejected | `tests/phase2_token_policy.rs::default_account_state_frozen_mint_rejected` |
+| `A-TOK-05` | Unrecognized extension rejected | `tests/phase2_token_policy.rs::unrecognized_extension_mint_rejected` |
+| `A-TOK-07` | Freeze authority ack required, flag recorded | `tests/phase2_token_policy.rs::freeze_authority_requires_acknowledgement` |
+| `I-DEPLOY-01` | Post-deploy admin assertion | `tests/phase2_state.rs::protocol_initializes_with_expected_admin_and_layout` |
+
+Not required this phase but exercised anyway because the fixtures were already in hand:
+`A-TOK-08`-equivalent (`wrong_token_program_for_mint_is_rejected`), the transfer-fee
+collateral-accepted/loan-rejected asymmetry (`transfer_fee_mint_accepted_as_collateral_rejected_as_loan_asset`,
+a `token-compatibility.md` §4 acceptance case), and a Tier-A-extension positive-path sanity test
+(`tier_a_extensions_are_accepted_and_recorded`).
+
+### 7. Adversarial evidence
+
+Every adversarial test asserts a **specific** `AegisError` (via `assert_aegis_error`, which
+decodes `u32::from(AegisError::X)` and compares against the transaction's actual custom error
+code) or, where the rejection is Anchor's own framework check rather than Aegis logic (the fake
+Protocol account), the specific Anchor `ErrorCode` — never merely "the transaction failed". Attacks
+attempted, and their observed rejection:
+
+| Attack | Result |
+|---|---|
+| Non-admin calls `create_market` | `NotProtocolAdmin` |
+| Attacker-owned account at the canonical `Protocol` PDA (owner = System Program) | Anchor `AccountOwnedByWrongProgram` (3007) — caught before any Aegis logic runs |
+| Reinitialize `Protocol` / `Market` / `Position` | Anchor `init` rejection (account already in use) in all three cases |
+| Non-canonical (but off-curve-valid) bump for `Position` | Anchor `ConstraintSeeds` rejection |
+| `max_ltv >= liq_threshold` | `InvalidMaxLtvOrThreshold` |
+| `liq_bonus` above the flat 0.25 WAD ceiling | `InvalidLiqBonus` |
+| `liq_bonus=0.24, liq_threshold=0.85` (derived bound, INV-LIQ-06) | `LiquidationBonusExceedsThresholdBound` |
+| `close_factor` below 0.05 WAD | `InvalidCloseFactor` |
+| `full_liq_hf = 0` | `InvalidFullLiqHf` |
+| `liq_protocol_fee` above 0.5 WAD | `InvalidLiqProtocolFee` |
+| `fee` above 0.25 WAD | `InvalidFee` |
+| `min_debt = 0` | `InvalidMinDebt` |
+| `u_kink` outside `(0, WAD)` | `InvalidIrmParams` |
+| A rate exceeding `max_rate_ps` | `InvalidIrmParams` |
+| `max_price_age_secs = 0` | `InvalidMaxPriceAge` |
+| `max_conf_bps = 3000` (> 2000) | `InvalidMaxConfBps` |
+| `collateral_mint == loan_mint` | `SameCollateralAndLoanMint` |
+| `TransferHook` collateral mint | `UnsupportedTokenExtension` |
+| `PermanentDelegate` collateral mint | `UnsupportedTokenExtension` |
+| `MintCloseAuthority` collateral mint | `UnsupportedTokenExtension` |
+| `DefaultAccountState = Frozen` collateral mint | `UnsupportedTokenExtension` |
+| Mint with an unrecognized TLV extension code | `InvalidMintAccountData` |
+| Transfer-fee mint as the loan asset | `TransferFeeNotAllowedForLoanAsset` |
+| Freeze-authority mint, unacknowledged | `FreezeAuthorityNotAcknowledged` |
+| Legacy SPL mint claimed under the Token-2022 program | `TokenProgramMintMismatch` |
+
+### 8. Demo
+
+```
+$ make demo
+anchor build
+cargo run -p aegis-test-kit --example phase2_demo
+Aegis Protocol — Phase 2 demo (state, PDAs, custody primitives)
+Zero-cost, local, offline: in-process LiteSVM, no devnet, no RPC, no API key.
+
+Deployed program 2GtoBADM175vkjf5UYpbD198Ry1cJadXMGo8sCQvXndh into LiteSVM.
+Admin/deployer:  GmaDrppBC7P5ARKV8g3djiwP89vz1jLK23V2GBjuAEGB
+
+=== 1. Protocol initialization ===
+Protocol account: 3bZsRoC9Uefpd49G2bUBqVDYCTU5ucQRywFcutugH3u8
+  admin:         GmaDrppBC7P5ARKV8g3djiwP89vz1jLK23V2GBjuAEGB
+  guardian:      9hSR6S7WPtxmTojgo6GG3k4yDPecgJY292j7xrsUGWBu
+  fee_recipient: GyGKxMyg1p9SsHfm15MkNUu1u9TN2JtTspcdmrtGUdse
+  paused:        0b00
+
+=== 2. Standard SPL market (SOL-like collateral / USDC-like loan) ===
+Market account:    FH3ZCzxQmK4LkVoBJi27YBccoSq68FUUDSsYA7GTKsg4
+  collateral_mint: 5Z6Ay5NEcbg3xhopc522sBCRXQujkTiuDRnHGfQdcnSf  (decimals 9)
+  loan_mint:       7v54NWdBtkjuAFJrLGsS2SXnuk8nKam81mZJeeYxVFi9  (decimals 6)
+  config_id:       0
+  max_ltv=0.75  liq_threshold=0.80  liq_bonus=0.05  close_factor=0.50
+  full_liq_hf=0.95  liq_protocol_fee=0.10  fee=0.10  min_debt=10000000
+  total_supply_assets=0 total_borrow_assets=0 (Phase 2: always zero)
+  collateral vault: HKyEdmNqhZuWoU5wkcvb5hC6AjkHU2NZ94woJFcfw2cv (canonical: true) authority=FH3ZCzxQmK4LkVoBJi27YBccoSq68FUUDSsYA7GTKsg4 mint=5Z6Ay5NEcbg3xhopc522sBCRXQujkTiuDRnHGfQdcnSf
+  loan vault: BvLTnssWjnTZtLbN6gq5wWEfEieUbG1PGjD4x9Mh9gdC (canonical: true) authority=FH3ZCzxQmK4LkVoBJi27YBccoSq68FUUDSsYA7GTKsg4 mint=7v54NWdBtkjuAFJrLGsS2SXnuk8nKam81mZJeeYxVFi9
+Fee position:      DNmsGKwhqzLfiPDBLCZEm2SLzBkAVFqGDdeGJSrrqscJ
+
+=== 3. Token-2022 market (transfer-fee collateral / plain SPL loan) ===
+Market account:    BJc8KXjjLDzZe61uZQwgYvNejTy36dnBqAL49gUcyKym
+  collateral_mint: 3BuW9SR5tG6VFK4MmkQQ3Ak8ny1K1Vv5Uz7is8Aa5pwG  (decimals 9)
+  loan_mint:       7v54NWdBtkjuAFJrLGsS2SXnuk8nKam81mZJeeYxVFi9  (decimals 6)
+  config_id:       0
+  max_ltv=0.75  liq_threshold=0.80  liq_bonus=0.05  close_factor=0.50
+  full_liq_hf=0.95  liq_protocol_fee=0.10  fee=0.10  min_debt=10000000
+  total_supply_assets=0 total_borrow_assets=0 (Phase 2: always zero)
+  collateral_has_transfer_fee flag set: true
+  collateral vault: 7K64vgh7NjgUBFrBYTdRyxUrux3HN5xLGH3kwnAXnpHd (canonical: true) authority=BJc8KXjjLDzZe61uZQwgYvNejTy36dnBqAL49gUcyKym mint=3BuW9SR5tG6VFK4MmkQQ3Ak8ny1K1Vv5Uz7is8Aa5pwG
+  loan vault: 3q4PNH2hoLKriYoAY9u6vsrndpCCPEKjBvoSc7kwqg2z (canonical: true) authority=BJc8KXjjLDzZe61uZQwgYvNejTy36dnBqAL49gUcyKym mint=7v54NWdBtkjuAFJrLGsS2SXnuk8nKam81mZJeeYxVFi9
+Fee position:      222gfyn5HrAhiFtxry22nRca5j6gNGX9YdRaGjbCnEYe
+  Token-2022 vault size: 182 bytes (never hardcoded to 165)
+
+=== 4. Position initialization ===
+SPL market lender position:      GzD7si8LgCqKdEbSodFSoQC5FCHNTxvMqn4k6AKhuDqv
+SPL market borrower position:    9UfCaMnQgxTSHp4qV6ZaR4WDYP8PAoCezVkhjqjakcv
+Token-2022 market borrower position: G7LRN7Km8Ggb4uRD9RRJYDHFEu3JeQQ1kfPgGEiSyKcA
+
+=== 5. Rejection table — incompatible mints and parameters ===
+Attempt                                       Rejection reason
+------------------------------------------------------------------------------------------
+TransferHook collateral                       UnsupportedTokenExtension
+PermanentDelegate collateral                  UnsupportedTokenExtension
+MintCloseAuthority collateral                 UnsupportedTokenExtension
+DefaultAccountState=Frozen collateral         UnsupportedTokenExtension
+Unrecognized extension collateral             InvalidMintAccountData
+Transfer-fee mint as LOAN asset               TransferFeeNotAllowedForLoanAsset
+Freeze-authority collateral, unacknowledged   FreezeAuthorityNotAcknowledged
+collateral_mint == loan_mint                  SameCollateralAndLoanMint
+LT=0.85, bonus=0.24 (derived bound INV-LIQ-06) LiquidationBonusExceedsThresholdBound (INV-LIQ-06)
+
+Demo complete. All Phase 2 acceptance criteria exercised above.
+```
+
+### 9. Regression — Phase 1 guarantees re-run
+
+```
+$ cargo fmt --all --check
+(no output — clean)
+
+$ cargo clippy --workspace --all-targets -- -D warnings
+    Finished `dev` profile [unoptimized + debuginfo] target(s) in ...
+(zero warnings)
+
+$ for s in scripts/check-*.sh; do ./"$s"; done
+check-no-close: OK — no close constraint targets Market or Protocol
+check-no-dup: OK — no 'dup' constraint in programs/
+check-no-float: OK — no f32/f64 in programs/ or crates/aegis-math/
+check-no-init-if-needed: OK — no init_if_needed constraint or feature in use
+check-no-slot-time: OK — no Clock.slot usage in programs/
+check-overflow-checks: OK — overflow-checks = true is set in [profile.release]
+
+$ cargo test --test smoke
+test ping_deploys_and_invokes_offline ... ok
+```
+`check-no-close.sh` (CI-NOCLOSE) is new in Phase 2 — it did not exist after Phase 1 (see Invariant
+status above). It was proven to actually fire, on a temporary fixture (`close = admin` added to a
+scratch Accounts struct referencing `Market`), then reverted with a byte-for-byte diff check
+(`diff` against a pre-fixture backup showed no difference) — the same evidence discipline Phase 1
+used for its five guards.
+
+`anchor build` (SBF target) also required one fix not present in Phase 1: `CreateMarket`'s
+`try_accounts` initially overflowed the SBF stack-frame limit by 192 bytes (`Market` is 640 bytes,
+held inline alongside every other account); boxing the `market` field
+(`Box<Account<'info, Market>>`) resolved it. This is recorded here as a real, encountered
+implementation constraint, not a hypothetical one.
+
+### 10. Deviations
+
+None requiring an ADR. Two implementation-level choices worth recording as design notes (not
+frozen-document changes):
+- Vaults are created by hand-rolled CPI sequencing rather than Anchor's `#[account(init, token::
+  ...)]` sugar, specifically to add `ImmutableOwner` to Token-2022 vaults (§3 above).
+- `DefaultAccountState` is rejected unconditionally rather than only when its configured state is
+  `Frozen` (§4 above) — the more conservative reading of a table entry that does not specify the
+  `Initialized` case.
+
+---
+
+## Phase 2 self-audit
+
+Performed before declaring Phase 2 complete, per the task's final-audit checklist.
+
+| Question | Answer |
+|---|---|
+| Can a fake Protocol account pass? | No — `attacker_owned_fake_protocol_account_is_rejected` plants a byte-identical, System-Program-owned account at the canonical PDA; Anchor's owner check (`AccountOwnedByWrongProgram`) rejects it before any Aegis logic runs. |
+| Can an attacker choose a noncanonical PDA? | No — `non_canonical_bump_is_rejected` submits a real, off-curve-valid PDA for a lower bump than canonical; Anchor's `seeds`/`bump` constraint (which always recomputes the canonical address via `find_program_address`, never accepts a caller-supplied bump) rejects it. |
+| Can a bump be manipulated? | No — every PDA field uses bare `bump` (init) or `bump = <stored>` (existing); no instruction accepts a bump as an argument. |
+| Can a Market vault point somewhere else? | No — both vaults are PDAs of `(seed, market)`, created once inside `create_market` by the program itself; there is no code path that lets a caller supply an alternative vault address for `init`. |
+| Can the wrong token program be substituted? | No — `Interface<'info, TokenInterface>` restricts the account to one of the two known token programs, and the handler additionally pins each mint's actual owner to the *specific* program passed for it (`wrong_token_program_for_mint_is_rejected`). |
+| Can an unknown Token-2022 extension slip through? | No — the allowlist is a `match` with an explicit accept-arm list and a `_ => reject` catch-all; `unrecognized_extension_mint_rejected` proves it against a mint carrying a type code this dependency version cannot even decode. |
+| Does the extension policy accidentally become a denylist? | No — verified by code inspection: there is no "allow unless in this rejected list" branch anywhere in `token/policy.rs`; the only accept path is the explicit Tier A/B arm list. |
+| Can freeze authority be silently accepted? | No — `require!(args.ack_freeze_authority, ...)` fires whenever either mint has one; `freeze_authority_requires_acknowledgement` proves both the rejection and the acceptance-with-recorded-flag paths. |
+| Can collateral mint equal loan mint? | No — `require_keys_neq!` is the first check in the handler; proven by the sweep test. |
+| Can invalid risk parameters create an unsafe market? | No — every bound in `economic-model.md` §5 is checked, proven individually by the out-of-bounds sweep. |
+| Can the liquidation bonus bound overflow or round incorrectly? | No — `liq_bonus` is bounded to `<= 0.25 WAD` *before* `WAD.checked_add(liq_bonus)` runs, so the addition cannot overflow; the multiply-divide goes through `aegis-math`'s 256-bit-intermediate `mul_div_floor`, the same primitive whose overflow behavior Phase 1 exhaustively tested. |
+| Can `create_market` omit the fee position? | No — `fee_position` is a non-optional `init`-required account in the `Accounts` struct; the instruction cannot succeed without creating it. |
+| Can Market creation be replayed/reinitialized? | No — `reinitializing_market_fails` proves a second `create_market` call with the same `(collateral_mint, loan_mint, config_id)` fails, and the original market's data is untouched. |
+| Can two markets unexpectedly share writable custody state? | No — `two_markets_same_asset_pair_different_config_id_coexist` proves distinct PDAs, distinct vaults, and distinct fee positions for two markets differing only in `config_id`. |
+| Are reserved bytes deterministic/zero? | Yes — always constructed as `[0u8; N]` explicitly; asserted directly in every lifecycle test. |
+| Is any user instruction writing global Protocol state unnecessarily? | No — `create_market_does_not_write_protocol` compares the account's raw bytes before and after a successful `create_market` call and asserts byte-for-byte equality. |
+| Did I accidentally implement Phase 3 behavior? | No — grep-verified: no `deposit`/`withdraw`/`borrow`/`repay`/`liquidate`/`supply`/`accrue` function exists anywhere in `programs/aegis/src/`. |
+| Did documentation outrun implementation? | No — every claim in this section is backed by a command actually run and output actually observed this session; nothing here describes planned rather than built behavior. |
+
+### Changes forced by this audit
+
+1. **`Market` boxed in `CreateMarket`'s Accounts struct** — found by `anchor build`'s SBF
+   stack-frame check, not by review; without it the program does not compile for the on-chain
+   target at all (§9 above).
+2. **`reinitializing_market_fails` added** — the initial adversarial suite covered `Protocol` and
+   `Position` reinitialization but not `Market` itself; added directly from this audit's "Can
+   Market creation be replayed?" question.
+3. **`create_market_does_not_write_protocol` added** — INV-ACCT-07 had no direct test until this
+   audit's "Is any user instruction writing global Protocol state unnecessarily?" question
+   prompted one.
 
 ---
 
@@ -453,5 +925,5 @@ change to the design.
 
 ## Next action
 
-**Phase 1 is complete. Hand Phase 2 to the implementation model when the maintainer explicitly
-authorizes it. Phase 2 has NOT been started.**
+**Phase 2 is complete. Hand Phase 3 (collateral flows) to the implementation model when the
+maintainer explicitly authorizes it. Phase 3 has NOT been started.**

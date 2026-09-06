@@ -415,3 +415,59 @@ because it is exactly the kind of detail a memorized pattern gets wrong silently
 | RV-6 | **Whether the Solana runtime permits `A → B → A` CPI reentrancy** (non-self-recursive). Aegis must not depend on the answer, but Phase 8's callback design must state it correctly. | Phase 8 |
 | RV-7 | Whether SIMD-0296 (4096-byte transactions) is active on the target cluster and supported by `@solana/kit` | Phase 9 |
 | RV-8 | Current Jupiter API/program surface for liquidation routing | Phase 8 |
+
+---
+
+## 14. Phase 2 re-verification (2026-09-06) — `anchor-spl` / Token-2022 API surface
+
+Every finding below was hit directly during implementation (compile errors, `anchor build` SBF
+warnings, or direct inspection of the fetched crate sources under
+`~/.cargo/registry/src/`), not assumed from prior knowledge.
+
+1. **`anchor-spl` 1.2.0's Token-2022 support depends on `spl-token-2022-interface` 2.1.0, not a
+   crate literally named `spl-token-2022`.** Its legacy counterpart is `spl-token-interface`
+   2.0.0. `anchor_spl::token_2022::spl_token_2022` and `anchor_spl::token::spl_token` are aliasing
+   re-exports of these interface crates, so code written against the documented `anchor_spl`
+   module paths is unaffected — only a direct Cargo dependency on the underlying crate needs the
+   `-interface` suffixed name.
+2. **`anchor_spl::token_interface::{Mint, TokenAccount, TokenInterface}` plus
+   `find_mint_account_size`/`get_mint_extension_data`** are exactly the types `create_market`
+   needs: `InterfaceAccount<'info, Mint>` derefs to `spl_token_2022::state::Mint` and validates
+   the account owner is one of the two token programs (not the *specific* one pinned per market —
+   callers must still check that explicitly, per `token-compatibility.md` §5.1's own warning).
+3. **`ExtensionType::get_required_init_account_extensions(&mint_extension_types) ->
+   Vec<ExtensionType>`** (in `spl-token-2022-interface`) is the correct, current API for computing
+   which *account*-level extensions a vault needs from a mint's *mint*-level extensions (e.g.
+   `TransferFeeConfig` → `TransferFeeAmount`) — this is exactly the "appropriate equivalent" the
+   phase spec asked to find for `ExtensionType::try_calculate_account_len`. Anchor's own `#[account(init,
+   token::mint = ...)]` codegen (`anchor-syn`'s `generate_get_token_account_space`) uses precisely
+   this function, confirming it against Anchor's own reference implementation rather than only this
+   repository's usage of it.
+4. **`anchor_lang::context::CpiContext::new` takes `program_id: Pubkey`, not an `AccountInfo`.**
+   The invoked program's `AccountInfo` does not need to appear in the CPI's account list at all —
+   the Solana runtime resolves the callee from the *transaction's* full account list, not from the
+   `invoke`/`invoke_signed` call's own slice. Every CPI helper in `anchor_spl::token_2022`
+   confirms this (none of them include the token-program account in their internal
+   `invoke`/`invoke_signed` calls).
+5. **LiteSVM 0.16.0 embeds real SPL program bytecode** (`spl_token-3.5.0.so`,
+   `spl_token_2022-11.0.0.so`, `spl_memo-1.0.0.so`/`4.0.0.so`,
+   `spl_associated_token_account-1.1.1.so`, `address_lookup_table.so`, a Pinocchio token program
+   used when a specific feature-gate is active) inside its own crate, loaded automatically by
+   `LiteSVM::new()` (via `.with_default_programs()`). This means test fixtures can create real SPL
+   Token and Token-2022 mints — including with real extensions — via ordinary CPI-building
+   instructions and `send_transaction`, with zero network access and zero hand-rolled account
+   bytes, except for the one deliberately synthetic fixture that simulates an extension type this
+   repository's dependency does not define at all (`aegis-test-kit::create_token_2022_mint_with_unrecognized_extension`).
+6. **`#[error_code]`'s discriminant handling** (`anchor-syn` 1.2.0's `parser/error.rs`): explicit
+   integer discriminants (`Variant = N`) on an `AegisError` enum variant are fully supported and
+   are exactly what banded error codes (`architecture.md` §8) need — `anchor-attribute-error`
+   preserves the enum's own Rust discriminants verbatim (`#[repr(u32)] #error_enum`) and computes
+   the final on-chain code as `variant as u32 + ERROR_CODE_OFFSET` (6000 by default). A variant
+   without an explicit discriminant continues from the previous one, so only the first variant in
+   each band needs its discriminant spelled out.
+
+None of these are architectural findings — every Phase 0 decision they touch (Anchor as the
+production framework, `anchor_spl::token_interface` for dual-token-program support, LiteSVM as the
+Tier 3 harness) still holds exactly as ADR-0001/0002 state it. They are the version-plumbing and
+current-API facts a from-scratch Phase 2 session needs and that this document's Phase 1 research
+could not yet have (Token-2022 policy code did not exist until this phase).

@@ -2,12 +2,14 @@
 
 **A risk-first, isolated-market, overcollateralized lending protocol on Solana.**
 
-> **STATUS: PHASE 1 — TOOLCHAIN, REPOSITORY AND CI FOUNDATION. NO LENDING PROTOCOL LOGIC EXISTS.**
-> Aegis is under construction; Phase 1 establishes the toolchain, workspace, CI and a
-> single trivial `ping` instruction only — proof that the pipeline works, not a start on the
-> protocol. No account struct, no instruction beyond `ping`, no oracle, no tokens, no vaults.
-> See [`docs/project-status.md`](docs/project-status.md) for the authoritative state of every
-> component.
+> **STATUS: PHASE 2 — STATE, PDAs AND CUSTODY PRIMITIVES. NO LENDING PROTOCOL LOGIC EXISTS.**
+> Aegis is under construction. Phase 2 ships the `Protocol`, `Market` and `Position` account
+> structs exactly as frozen in `account-model.md`; the `initialize_protocol`, `create_market` and
+> `init_position` instructions; both custody vaults with the `Market` PDA as authority and
+> Token-2022-aware sizing; and the positive Token-2022 extension allowlist. There is still no
+> deposit, withdrawal, supply, borrow, repay, interest, oracle, or liquidation — those begin at
+> Phases 3–6. See [`docs/project-status.md`](docs/project-status.md) for the authoritative state of
+> every component.
 
 ---
 
@@ -84,19 +86,26 @@ Native Solana Rust and Pinocchio appear in scoped, benchmarked labs — not in p
 
 ## Quickstart
 
-**Right now (Phase 1):** the repository has a Rust/Anchor workspace, but the *only* on-chain code is
-a single no-op `ping` instruction that proves the toolchain — build, IDL generation, LiteSVM deploy,
-and invocation — works end to end, offline, with no network and no secrets. There is no `Protocol`,
-`Market`, or `Position` account, no lending logic, no oracle, no tokens, no vaults, and no SDK/app yet.
+**Right now (Phase 2):** `programs/aegis` implements `Protocol`, `Market`, and `Position` accounts;
+`initialize_protocol`, `create_market`, and `init_position`; two custody vault token accounts per
+market (SPL Token or Token-2022, sized correctly for whatever extensions are present, never
+hardcoded to 165 bytes); and the Token-2022 positive extension allowlist with per-role enforcement
+and freeze-authority acknowledgement. `create_market` performs no token transfers — this phase
+proves custody *structure*, not lending behavior. There is still no deposit, withdrawal, supply,
+borrow, repay, interest accrual, oracle, or liquidation, and no SDK/app yet.
 
 ```bash
 make setup   # verify the pinned toolchain (Solana CLI, Anchor, Surfpool, Node) is installed
 make build   # anchor build — compiles `programs/aegis` and generates its IDL
 make test    # cargo test --workspace — offline, no network, no secrets (the load-bearing command)
+make demo    # protocol init, an SPL market, a Token-2022 market, positions, a rejection table —
+             # offline against an in-process LiteSVM (see docs/phases/phase-02-state.md "Demo")
 ```
 
-`make fuzz`, `make bench`, `make demo`, and `make app` exist as stubs that name the phase that
-implements them (10, 11, 13, and 9 respectively) — they are not yet functional.
+`make fuzz`, `make bench`, and `make app` exist as stubs that name the phase that implements them
+(10, 11, and 9 respectively) — they are not yet functional. The full lending/liquidation/bad-debt
+demo scenario in [`docs/zero-cost-demo.md`](docs/zero-cost-demo.md) §5 ships in Phase 13, once those
+instructions exist.
 
 The exact install commands, pinned versions, and verification steps are recorded in
 [`docs/phases/phase-01-foundation.md`](docs/phases/phase-01-foundation.md) §3 and

@@ -1,7 +1,8 @@
 # Aegis — Current Ecosystem & Tooling Research
 
-**Research date: 2026-09-04. Re-verified: 2026-09-05/06 (Phase 1).**
-**Status: FROZEN for Phase 0. Phase 1 re-verification is recorded in §12 below.**
+**Research date: 2026-09-04. Re-verified: 2026-09-05/06 (Phase 1); 2026-09-06 (Phase 2, Phase 5).**
+**Status: FROZEN for Phase 0. Phase 1 re-verification is in §12; Phase 2's is in §14; Phase 5's
+(RV-3/RV-4) is in §15.**
 
 This document records what was verified about the Solana ecosystem *at the research date*, which
 sources were used, and which Aegis design decisions depend on each finding. Nothing in Aegis may be
@@ -405,16 +406,16 @@ because it is exactly the kind of detail a memorized pattern gets wrong silently
 
 ## 13. Open verification items carried into later phases
 
-| ID | Question | Gate |
-|---|---|---|
-| RV-1 | Resolved `solana-*` crate versions under `anchor-lang 1.1.2` | Phase 1 |
-| RV-2 | Current Mollusk crate name/version and CU-measurement API | Phase 1 |
-| RV-3 | Upgraded Pyth receiver program ID and whether `PriceUpdateV2` is still the account type | Phase 5 |
-| RV-4 | Exact `VerificationLevel` enum shape in `pyth-solana-receiver-sdk` 2.x | Phase 5 |
-| RV-5 | Complete current Token-2022 extension list, including any added after Jan 2024 (e.g. `Pausable`, `ScaledUiAmount`) and their discriminants | Phase 7 |
-| RV-6 | **Whether the Solana runtime permits `A → B → A` CPI reentrancy** (non-self-recursive). Aegis must not depend on the answer, but Phase 8's callback design must state it correctly. | Phase 8 |
-| RV-7 | Whether SIMD-0296 (4096-byte transactions) is active on the target cluster and supported by `@solana/kit` | Phase 9 |
-| RV-8 | Current Jupiter API/program surface for liquidation routing | Phase 8 |
+| ID | Question | Gate | Status |
+|---|---|---|---|
+| RV-1 | Resolved `solana-*` crate versions under `anchor-lang 1.1.2` | Phase 1 | ✅ RESOLVED (§12.3) |
+| RV-2 | Current Mollusk crate name/version and CU-measurement API | Phase 1 | ✅ RESOLVED (§12.2) |
+| RV-3 | Upgraded Pyth receiver program ID and whether `PriceUpdateV2` is still the account type | Phase 5 | ✅ **RESOLVED** — see §15.1: address unchanged at `rec5EKMGg6MxZYaMdyBfgwp4d5rB9T1VQH5pJv5LtFJ`; `PriceUpdateV2` unchanged |
+| RV-4 | Exact `VerificationLevel` enum shape in `pyth-solana-receiver-sdk` 2.x | Phase 5 | ✅ **RESOLVED** — see §15.2: `enum VerificationLevel { Partial { num_signatures: u8 }, Full }` |
+| RV-5 | Complete current Token-2022 extension list, including any added after Jan 2024 (e.g. `Pausable`, `ScaledUiAmount`) and their discriminants | Phase 7 | OPEN |
+| RV-6 | **Whether the Solana runtime permits `A → B → A` CPI reentrancy** (non-self-recursive). Aegis must not depend on the answer, but Phase 8's callback design must state it correctly. | Phase 8 | OPEN |
+| RV-7 | Whether SIMD-0296 (4096-byte transactions) is active on the target cluster and supported by `@solana/kit` | Phase 9 | OPEN |
+| RV-8 | Current Jupiter API/program surface for liquidation routing | Phase 8 | OPEN |
 
 ---
 
@@ -471,3 +472,110 @@ production framework, `anchor_spl::token_interface` for dual-token-program suppo
 Tier 3 harness) still holds exactly as ADR-0001/0002 state it. They are the version-plumbing and
 current-API facts a from-scratch Phase 2 session needs and that this document's Phase 1 research
 could not yet have (Token-2022 policy code did not exist until this phase).
+
+---
+
+## 15. Phase 5 re-verification (2026-09-06) — RV-3 and RV-4 resolved
+
+Both gates were closed **before any oracle code was written**, per this document's own §0
+verification protocol and `docs/phases/phase-05-oracle.md`'s explicit research gate. Every finding
+below traces to a primary source actually fetched during this phase — crates.io's own registry
+API, the real `pyth-solana-receiver-sdk` 2.0.0 crate source downloaded from static.crates.io, and
+`docs.pyth.network` directly — never memory or a tutorial.
+
+### 15.1 RV-3 — upgraded Pyth receiver program ID and account type
+
+**Resolved: the receiver program address did NOT change across the 2026-08-26 Pyth Core
+upgrade.**
+
+- `docs.pyth.network/price-feeds/core/contract-addresses/solana` (fetched directly, 2026-09-06)
+  states verbatim: *"The Solana receiver program is deployed at
+  `rec5EKMGg6MxZYaMdyBfgwp4d5rB9T1VQH5pJv5LtFJ` across all supported networks"* and *"Pyth Core
+  upgrade completed successfully on August 26, 2026 ... Existing integrations using the current
+  addresses were automatically upgraded by the DAO on August 26, 2026"* — new integrations are
+  told to "use the upgraded Solana contracts," but **the receiver program address itself remained
+  consistent across the upgrade**.
+- Independently confirmed by reading the actual crate source: `pyth-solana-receiver-sdk` 2.0.0's
+  `src/lib.rs` (`declare_id!("rec5EKMGg6MxZYaMdyBfgwp4d5rB9T1VQH5pJv5LtFJ")`, the default —
+  non-`pro-compatible` — build) matches the docs.pyth.network address exactly. A second,
+  feature-gated `pro-compatible` ID (`rec2HHDDnjLfj4kE7VyEtFA1HPGQLK33259532cRyHp`) also exists in
+  the crate but is **not** used here — Aegis depends on the crate with default features, so
+  `pyth_solana_receiver_sdk::ID` resolves to the address above.
+- **Ownership semantics**: `PriceUpdateV2` is an Anchor `#[account]` struct defined inside this
+  crate, so its `Owner` impl (generated by the `#[account]` macro) returns `crate::ID` — i.e. the
+  same receiver program ID. `oracle::pyth::PythPull::read_price` asserts this explicitly via
+  `require_keys_eq!(*account.owner, pyth_solana_receiver_sdk::ID, ...)` (O-1), in addition to
+  whatever an `Account<'info, T>` wrapper would have checked automatically, per the phase spec's
+  explicit-owner-validation requirement.
+- **Account type**: `PriceUpdateV2` is unchanged — same crate, same version, same struct layout
+  (`write_authority: Pubkey`, `verification_level: VerificationLevel`,
+  `price_message: PriceFeedMessage`, `posted_slot: u64`).
+- **Exact crate version**: `pyth-solana-receiver-sdk` **2.0.0** (published 2026-06-15T20:22:15Z) —
+  confirmed as both `max_stable_version` and `newest_version` via crates.io's own registry API
+  (`GET /api/v1/crates/pyth-solana-receiver-sdk`, fetched 2026-09-06; no newer version has been
+  published since, including after the 2026-08-26 Core upgrade — the upgrade did not require an
+  SDK bump). Matches this document's §4 finding exactly; nothing had gone stale.
+- **`anchor-lang` compatibility**: `pyth-solana-receiver-sdk` 2.0.0's own `Cargo.toml` declares
+  `anchor-lang = "1.0.2"` (a `^1.0.2` caret requirement), satisfied by this workspace's
+  `anchor-lang = "1.2.0"` (resolved and building cleanly — verified by `cargo build`/`anchor
+  build` actually succeeding with both crates in the dependency graph).
+
+Sources (fetched 2026-09-06):
+- <https://docs.pyth.network/price-feeds/core/contract-addresses/solana>
+- <https://crates.io/api/v1/crates/pyth-solana-receiver-sdk> (registry API, `max_stable_version`/`newest_version`/`updated_at`)
+- <https://crates.io/api/v1/crates/pyth-solana-receiver-sdk/2.0.0/dependencies>
+- `pyth-solana-receiver-sdk-2.0.0.crate` (downloaded from static.crates.io and extracted directly)
+  — `src/lib.rs`, `src/program.rs`, `src/price_update.rs`, `Cargo.toml`
+
+### 15.2 RV-4 — `VerificationLevel` shape in `pyth-solana-receiver-sdk` 2.x
+
+**Resolved directly from the crate's own source** (`src/price_update.rs`):
+
+```rust
+pub enum VerificationLevel {
+    Partial {
+        #[allow(unused)]
+        num_signatures: u8,
+    },
+    Full,
+}
+```
+
+with a `gte` method (`Full` is always `>=` everything; `Partial{n}` is `>=` `Partial{m}` iff `n >=
+m`) used internally by `PriceUpdateV2::get_price_no_older_than`, which **hardcodes a `Full`
+requirement**:
+
+```rust
+pub fn get_price_no_older_than(&self, clock: &Clock, maximum_age: u64, feed_id: &FeedId)
+    -> Result<Price, GetPriceError> {
+    self.get_price_no_older_than_with_custom_verification_level(
+        clock, maximum_age, feed_id, VerificationLevel::Full,
+    )
+}
+```
+
+This is unchanged in shape from what this document's §4 already recorded as the SDK's documented
+behavior — no enum-shape drift across versions was found. `oracle::pyth::PythPull::read_price` (1)
+calls `get_price_no_older_than` (enforcing O-3/O-4/O-5 together, mapping its `GetPriceError`
+variants to specific `AegisError`s) **and** (2) separately, explicitly asserts
+`price_update.verification_level == VerificationLevel::Full` before that call — the phase spec's
+"still assert it explicitly ... easy to omit and rarely tested" requirement, so the check survives
+even if a future SDK version changed `get_price_no_older_than`'s internal default.
+
+Source: `pyth-solana-receiver-sdk-2.0.0/src/price_update.rs` (downloaded and read directly, as
+above) — the same file both findings come from.
+
+### 15.3 Contradiction check
+
+Neither finding invalidates any Phase 0 architectural decision. ADR-0008's architecture (oracle
+abstraction, one real Pyth implementer, deterministic fixture injection, no mock program, account
+read not CPI) holds exactly as written — the receiver program ID is unchanged, `PriceUpdateV2` is
+unchanged, and `VerificationLevel` is unchanged. Only the exact address/shape needed confirming
+against a primary source before writing code that depends on them; both are now pinned with
+evidence above. No ADR was required.
+
+### 15.4 Environment at Phase 5 (2026-09-06)
+
+Unchanged from Phase 1/2 (`rustc`/`cargo` 1.98.1, Agave CLI 3.1.10, `anchor-cli` 1.2.0, `avm`
+1.1.2) — re-verified by `anchor build` and `cargo test --workspace` succeeding. No toolchain delta
+this phase.

@@ -1,8 +1,8 @@
 # Aegis — Project Status
 
 **Last updated: 2026-09-06**
-**Current phase: Phase 4 — Lending, Borrowing & Interest — COMPLETE**
-**Next phase: Phase 5 — Oracle — NOT STARTED**
+**Current phase: Phase 5 — Oracle — COMPLETE**
+**Next phase: Phase 6 — Health, Liquidation & Bad Debt — NOT STARTED**
 
 > This file is the first thing any contributor or model reads after `AGENTS.md`. It must always
 > reflect reality. **"Implemented" never means "verified."** The five states below are tracked
@@ -34,7 +34,7 @@ rounded up.
 | 2 | State, PDAs & custody primitives | ✅ **COMPLETE** | `phase-02-state` |
 | 3 | Collateral flows | ✅ **COMPLETE** | `phase-03-collateral` |
 | 4 | Lending, borrowing & interest | ✅ **COMPLETE** | `phase-04-lending` |
-| 5 | Oracle | ⬜ NOT STARTED | — |
+| 5 | Oracle | ✅ **COMPLETE** | `phase-05-oracle` |
 | 6 | Health, liquidation & bad debt | ⬜ NOT STARTED | — |
 | 7 | Token-2022 | ⬜ NOT STARTED | — |
 | 8 | Composability | ⬜ NOT STARTED | — |
@@ -52,13 +52,20 @@ mints. `Market` remains read-only in both collateral instructions, preserving th
 collateral parallelism claim (C2).
 
 **Phase 4 is complete.** `supply`, `withdraw`, `repay` and `accrue_interest` exist on-chain and are
-fully functional; `borrow` exists structurally but is hard-gated to always fail with
-`OracleNotYetAvailable` until Phase 5 (`docs/phase-roadmap.md` "Sequencing the oracle
-dependency") — no oracle account exists anywhere in its account list, so there is no code path
-that could permit an actual borrow without a price check. `aegis-math` gained `shares.rs` (virtual
--offset share/asset conversions) and `irm.rs` (utilization, the piecewise-linear rate curve, and
-third-order Taylor compounding); `state/market.rs` gained `accrue_view`/`accrue_mut`. Full evidence
-is in **Phase 4 — evidence** below.
+fully functional; `borrow` existed structurally but was hard-gated (`OracleNotYetAvailable`) until
+Phase 5. `aegis-math` gained `shares.rs` (virtual-offset share/asset conversions) and `irm.rs`
+(utilization, the piecewise-linear rate curve, and third-order Taylor compounding); `state/
+market.rs` gained `accrue_view`/`accrue_mut`.
+
+**Phase 5 is complete.** The Phase 3/4 hard gates are removed: `borrow` and the debt path of
+`withdraw_collateral` are now real, oracle-validated instructions. `programs/aegis/src/oracle/`
+implements the `PriceSource` abstraction and its sole implementer, `pyth::PythPull`, against the
+real `pyth-solana-receiver-sdk` 2.0.0 (RV-3/RV-4 resolved, `docs/ecosystem-research.md` §15).
+`aegis-math` gained `health.rs` (conservative valuation, health factor, the LTV admissibility
+check). `aegis-test-kit` gained `pyth_fixture.rs`, which constructs byte-exact `PriceUpdateV2`
+accounts using the real SDK's own `AccountSerialize`/`AccountDeserialize` impls — no mock oracle
+provider and no mock program exist anywhere (ADR-0008). Full evidence is in **Phase 5 — evidence**
+below; Phase 4's own evidence is preserved unchanged in **Phase 4 — evidence**.
 
 ## Component status
 
@@ -67,19 +74,19 @@ is in **Phase 4 — evidence** below.
 | `aegis-math` — arithmetic (`mul_div_floor`/`mul_div_ceil`) | ✅ | ✅ | ⬜ | ✅ | ⬜ |
 | `aegis-math` — shares | ✅ | ✅ | ✅ | ✅ | ⬜ |
 | `aegis-math` — IRM/accrual | ✅ | ✅ | ✅ | ✅ | ⬜ |
-| `aegis-math` — health | ⬜ | ⬜ | ⬜ | ✅ | ⬜ |
+| `aegis-math` — health | ✅ | ✅ | ✅ | ✅ | ⬜ |
 | `aegis-math` — liquidation | ⬜ | ⬜ | ⬜ | ✅ | ⬜ |
 | `programs/aegis` — `ping` (toolchain proof only) | ✅ | ✅ | ⬜ | ✅ | ⬜ |
 | `Protocol` / `Market` / `Position` | ✅ | ✅ | ✅ | ✅ | ⬜ |
 | `initialize_protocol` / `create_market` / `init_position` | ✅ | ✅ | ✅ | ✅ | ⬜ |
 | Vaults & custody | ✅ | ✅ | ✅ | ✅ | ⬜ |
 | Token-2022 policy engine | ✅ | ✅ | ✅ | ✅ | ⬜ |
-| Collateral instructions (`deposit_collateral`, `withdraw_collateral`, `close_position`) | ✅ | ✅ | ✅ | ✅ | ⬜ |
-| Lend/borrow instructions (`supply`, `withdraw`, `repay`, `accrue_interest`; `borrow` hard-gated) | ✅ | ✅ | ✅ | ✅ | ⬜ |
-| Oracle (Pyth adapter) | ⬜ | ⬜ | ⬜ | ✅ | ⬜ |
+| Collateral instructions (`deposit_collateral`, real oracle-validated `withdraw_collateral`, `close_position`) | ✅ | ✅ | ✅ | ✅ | ⬜ |
+| Lend/borrow instructions (`supply`, `withdraw`, `repay`, `accrue_interest`, real oracle-validated `borrow`) | ✅ | ✅ | ✅ | ✅ | ⬜ |
+| Oracle (Pyth adapter, `oracle::require_valid_price`, O-1..O-11) | ✅ | ✅ | ✅ | ✅ | ⬜ |
 | Liquidation & bad debt | ⬜ | ⬜ | ⬜ | ✅ | ⬜ |
 | Governance & migrations | ⬜ | ⬜ | ⬜ | ✅ | ⬜ |
-| `aegis-test-kit` (mints, market/position lifecycle, user token accounts, invariant checker, borrow-state injection) | ✅ | ✅ | ✅ | ✅ | ⬜ |
+| `aegis-test-kit` (mints, market/position lifecycle, user token accounts, invariant checker, borrow-state injection, `pyth_fixture` byte-exact `PriceUpdateV2` construction) | ✅ | ✅ | ✅ | ✅ | ⬜ |
 | Invariant fuzzer | ⬜ | ⬜ | ⬜ | ✅ | ⬜ |
 | CU benchmarks | ⬜ | ⬜ | ⬜ | ✅ | ⬜ |
 | `labs/` (Anchor/native/Pinocchio) | ⬜ | ⬜ | ⬜ | ✅ | ⬜ |
@@ -163,7 +170,7 @@ and the Phase-4-assigned rows of §B/§E/§F:
 | INV-BOR-02 | `U-BORROW-01` (`u_borrow_01_free_liquidity_bound`, `instructions/borrow/borrow.rs`) |
 | INV-BOR-03 | `U-ROUND-03` (`round_03_borrow_assets_borrow_shares_minted_ceils`, `aegis-math`) |
 | INV-BOR-05 | `U-GUARD-01` (`guard_01_both_zero_is_rejected`) |
-| INV-REP-01 | `borrow_is_hard_gated_*` tests plus `repay`'s account list containing no price account at all |
+| INV-REP-01 | `repay.rs`'s `Repay` account list contains no price-update field at all (structural), plus `A-ORACLE-02` (`a_oracle_02_repay_succeeds_with_broken_oracle`, Phase 5) proving it live against a broken oracle |
 | INV-REP-02 | `repay.rs` declares no pause check anywhere (structural; Phase 12 must not add one) |
 | INV-REP-03 | `U-REPAY-01` (`repay_clamps_to_actual_debt_never_pulls_excess`) |
 | INV-REP-04 | `U-ROUND-04` (`round_04_repay_assets_borrow_shares_burned_floors`, `aegis-math`) |
@@ -173,7 +180,28 @@ and the Phase-4-assigned rows of §B/§E/§F:
 the loan side by `loan_vault_direct_donation_is_never_credited` (`tests/phase4_adversarial.rs`),
 mirroring Phase 3's collateral-side `A-CUS-08`.
 
-Still **0 of the 87 numbered `invariants.md` invariants assigned to Phases 5-13** are implemented
+Phase 5 is the first phase to test numbered invariants from `docs/invariants.md` §G (oracle) and
+the Phase-5-assigned rows of §E/§D:
+
+| ID | Tested by |
+|---|---|
+| INV-ORA-01 | Every `A-ORACLE-03..12` test (`tests/phase5_oracle_adversarial.rs`) — each violates one O-check and asserts the specific resulting `AegisError` |
+| INV-ORA-02 | `A-ORACLE-01` (`a_oracle_01_deposit_collateral_succeeds_with_broken_oracle`), `A-ORACLE-02` (`a_oracle_02_repay_succeeds_with_broken_oracle`) — the two mandatory positive safety tests |
+| INV-ORA-03 | `U-HEALTH-01`/`U-HEALTH-02` (`crates/aegis-math/src/health.rs`) — collateral valued at `lo` floored, debt at `hi` ceiled |
+| INV-ORA-04 | `A-ORACLE-07` (`a_oracle_07_wrong_feed_id_is_rejected`) |
+| INV-ORA-05 | `A-ORACLE-12` (`a_oracle_12_same_account_for_both_feeds_is_rejected`) |
+| INV-ORA-06 | `oracle::pyth::PythPull::read_price` uses `Clock::get()?.unix_timestamp`/`price.publish_time` exclusively; `scripts/check-no-slot-time.sh` (CI-NOSLOT) greps `programs/aegis/src` for `Clock` slot usage |
+| INV-ORA-07 | `A-ORACLE-13` (both variants: `a_oracle_13_failed_oracle_check_leaves_state_byte_identical`, `a_oracle_13_failed_withdraw_collateral_oracle_check_leaves_state_byte_identical`) — full before/after account-data and lamport snapshots, not merely "the instruction returned an error" |
+| INV-BOR-01 | `A-ORACLE-03` (`a_oracle_03_stale_oracle_blocks_borrow_and_debt_withdraw_but_not_repay_or_deposit`) — a stale (invalid) oracle causes `borrow` to fail closed |
+| INV-SOLV-01 | `debt_bearing_withdraw_rejects_unsafe_post_withdraw_health` / `debt_bearing_withdraw_succeeds_when_post_withdraw_health_is_safe` (`withdraw_collateral`'s debt path) and `borrow.rs`'s own LTV `require!` (both call sites of `aegis_math::is_within_max_ltv`) |
+
+`INV-ORA-01..07`, `INV-BOR-01` and `INV-SOLV-01` are all formally assigned to Phase 5 in
+`docs/invariants.md`'s per-phase column; every one is mapped above to a concrete, currently-passing
+test. `INV-SOLV-01` is marked **[GLOBAL]** in `invariants.md` — Phase 10's fuzzer is the eventual
+per-instruction-sequence check; Phase 5 exercises it directly at both of its two call sites
+(`borrow`, debt-path `withdraw_collateral`).
+
+Still **0 of the 87 numbered `invariants.md` invariants assigned to Phases 6-13** are implemented
 or tested — expected at this point; see `docs/invariants.md` for the full per-phase assignment.
 
 ---
@@ -264,8 +292,8 @@ rediscover them.
 |---|---|---|---|
 | RV-1 | Resolved `solana-*` crate versions under `anchor-lang 1.1.2` | 1 | ✅ **RESOLVED** — see above and `docs/ecosystem-research.md` §12.3 (now under `anchor-lang 1.2.0`, the current stable) |
 | RV-2 | Current Mollusk crate/version and CU API | 1 | ✅ **RESOLVED** — `mollusk-svm` 0.15.1; CU API not yet exercised (first used Phase 2+) |
-| RV-3 | Upgraded Pyth receiver program ID (post 2026-08-26) | 5 | OPEN |
-| RV-4 | `VerificationLevel` shape in `pyth-solana-receiver-sdk` 2.x | 5 | OPEN |
+| RV-3 | Upgraded Pyth receiver program ID (post 2026-08-26) | 5 | ✅ **RESOLVED** — unchanged at `rec5EKMGg6MxZYaMdyBfgwp4d5rB9T1VQH5pJv5LtFJ`; see `docs/ecosystem-research.md` §15.1 |
+| RV-4 | `VerificationLevel` shape in `pyth-solana-receiver-sdk` 2.x | 5 | ✅ **RESOLVED** — `enum { Partial { num_signatures: u8 }, Full }`; see `docs/ecosystem-research.md` §15.2 |
 | RV-5 | Complete current Token-2022 extension list and discriminants | 7 | OPEN |
 | RV-6 | Does the runtime permit `A → B → A` CPI reentrancy? | 8 | OPEN |
 | RV-7 | SIMD-0296 (4096-byte tx) availability and `@solana/kit` support | 9 | OPEN |
@@ -318,9 +346,391 @@ names `spl-token-interface`/`spl-token-2022-interface`, not `spl-token`/`spl-tok
 ships real embedded SPL Token / Token-2022 program bytecode; `CpiContext::new` takes a `Pubkey`,
 not an `AccountInfo`) — none of them change a Phase 0 architectural decision.
 
+No ADR was added or changed in Phase 5. ADR-0008 (oracle abstraction; deterministic prices via
+fixture injection, no mock program) is implemented exactly as written — RV-3/RV-4 resolved without
+invalidating it (`docs/ecosystem-research.md` §15.3). One documentation finding, not a design
+deviation: `economic-model.md` §6.5's worked-example prose states the two health factors as
+"1.330838..." and "0.842495..."; the correct values (from the document's own formulas and input
+numbers, independently cross-checked with exact rational arithmetic) are `1.330400586549357...`
+and `0.84249816703326...`. Investigated per `AGENTS.md`'s "investigate formula/rounding first"
+guidance before writing `U-HEALTH-01`/`U-HEALTH-02` — recorded here, not silently worked around;
+see `crates/aegis-math/src/health.rs`'s test doc comments for the full reasoning. The frozen
+document was not edited (a manual-arithmetic transcription slip in prose, not a formula or
+rounding-direction disagreement).
+
+One guard script updated: `scripts/check-collateral-transfer-paths.sh`'s outbound allowlist
+gained `programs/aegis/src/instructions/borrow/borrow.rs` (the real `borrow` now legitimately
+transfers `loan_vault → owner`, account-model.md §6.3's fourth custody path) and the Phase 4-era
+"`borrow.rs` must never call a transfer helper while hard-gated" check was removed, since the gate
+it protected no longer exists. This is the check tracking reality, not a weakening — the six-path
+custody enumeration in `account-model.md` §6.3 is unchanged.
+
 ---
 
-## Phase 4 — evidence
+## Phase 5 — evidence
+
+### 1. Research gates RV-3 and RV-4 (closed before any oracle code was written)
+
+Full detail in `docs/ecosystem-research.md` §15, fetched 2026-09-06 from primary sources —
+crates.io's registry API, the actual `pyth-solana-receiver-sdk` 2.0.0 crate source (downloaded and
+read directly), and `docs.pyth.network` fetched directly:
+
+| Gate | Finding | Source |
+|---|---|---|
+| RV-3 | Receiver program ID unchanged across the 2026-08-26 Core upgrade: `rec5EKMGg6MxZYaMdyBfgwp4d5rB9T1VQH5pJv5LtFJ`. `PriceUpdateV2` unchanged. | `docs.pyth.network/price-feeds/core/contract-addresses/solana`; `pyth-solana-receiver-sdk-2.0.0/src/lib.rs` |
+| RV-4 | `enum VerificationLevel { Partial { num_signatures: u8 }, Full }`, unchanged in shape; `get_price_no_older_than` hardcodes a `Full` requirement. | `pyth-solana-receiver-sdk-2.0.0/src/price_update.rs` |
+| Version | `pyth-solana-receiver-sdk` **2.0.0** (published 2026-06-15), `anchor-lang = "^1.0.2"` — satisfied by this workspace's `anchor-lang 1.2.0` | crates.io registry API |
+
+Neither finding invalidated ADR-0008 or any other Phase 0 decision (§15.3).
+
+### 2. Oracle abstraction (`programs/aegis/src/oracle/`)
+
+`oracle/mod.rs` defines `PriceBand { lo, hi, published_at }` and the `PriceSource` trait exactly
+per `oracle-design.md` §1 (a raw `&AccountInfo`, not a concrete Pyth account wrapper, so a v2
+non-Pyth implementer would not need to depend on Pyth's types). `require_valid_price` is the
+single, shared enforcement point every priced instruction calls — no instruction improvises its
+own oracle checks. Dispatch is by `market.oracle_kind`; only `ORACLE_KIND_PYTH_PULL = 0` (Pyth
+pull) is accepted in v1, matching ADR-0008 §1's "one implementer" framing.
+
+`oracle/pyth.rs`'s `PythPull` is the sole implementer, built against the real SDK types verified
+above. No `Mock` variant, no mock-oracle program, anywhere — confirmed by grep (`grep -ri mock
+programs/aegis/src` returns nothing) and by construction (the trait's only implementer is
+`PythPull`).
+
+### 3. O-1..O-11 — full failure matrix
+
+| Check | Meaning | Implementation | Test |
+|---|---|---|---|
+| O-1 | Account owner == Pyth receiver program | `oracle::pyth::PythPull::read_price`, explicit `require_keys_eq!` (in addition to what an `Account<>` wrapper would do automatically — this repo deliberately doesn't use one, per the frozen trait signature) | `A-ORACLE-06` (`a_oracle_06_wrong_owner_account_is_rejected`) |
+| O-2 | Correct discriminator / real `PriceUpdateV2` deserialization | `PriceUpdateV2::try_deserialize`, mapped to `OracleAccountInvalidData` on failure | Exercised structurally by every passing test (a malformed buffer would fail here); `pyth_fixture::tests::deserializes_via_real_sdk` proves the fixture path round-trips through the real deserializer |
+| O-3 | `feed_id == market.{collateral,loan}_feed_id` | Explicit pre-check + `get_price_no_older_than`'s own feed check | `A-ORACLE-07` (`a_oracle_07_wrong_feed_id_is_rejected`) |
+| O-4 | `verification_level == Full` | Explicit pre-check + `get_price_no_older_than`'s hardcoded `Full` requirement | `A-ORACLE-08` (`a_oracle_08_partial_verification_level_is_rejected`) |
+| O-5 | `now - publish_time <= max_price_age_secs` | `get_price_no_older_than`, unix seconds only | `A-ORACLE-03` + boundary (`a_oracle_03_boundary_age_exactly_at_threshold_vs_plus_one`) |
+| O-6 | `publish_time <= now + 60s` | `oracle::pyth`'s explicit `MAX_FUTURE_PRICE_SKEW_SECS` check | `A-ORACLE-09` + boundary (`a_oracle_09_boundary_exactly_at_max_future_skew`) |
+| O-7 | `price > 0` | `aegis_math::conservative_price_band` | `A-ORACLE-04` (`a_oracle_04_zero_price_is_rejected`, `a_oracle_04_negative_price_is_rejected`) |
+| O-8 | `conf <= price * max_conf_bps / 10_000` | `aegis_math::conservative_price_band` | `A-ORACLE-05` + boundary (`a_oracle_05_boundary_confidence_exactly_at_threshold_vs_plus_one`) |
+| O-9 | `lo >= MIN_PRICE_WAD`, `hi <= MAX_PRICE_WAD` | `aegis_math::conservative_price_band` | `A-ORACLE-04` (`a_oracle_04_absurd_price_is_rejected`) |
+| O-10 | Exponent scaling checked, never overflows/panics | `aegis_math::health::scale_to_wad_{floor,ceil}`, `checked_pow`/`checked_mul`/`try_from` throughout | `health::tests::exponent_driven_overflow_is_a_clean_error_not_a_panic` (Tier 1); same bound exercised on-chain by `A-ORACLE-04` |
+| O-11 | The two price accounts are distinct | `oracle::require_valid_price`, explicit `require_keys_neq!` on the two `AccountInfo` keys | `A-ORACLE-12` (`a_oracle_12_same_account_for_both_feeds_is_rejected`) |
+
+Every row has concrete, currently-passing test evidence — `cargo test --workspace` output below.
+
+### 4. Byte-exact Pyth fixture (`crates/aegis-test-kit/src/pyth_fixture.rs`)
+
+`PriceFixture::to_price_update()` constructs a real `pyth_solana_receiver_sdk::price_update::
+PriceUpdateV2` value; `.serialize()` calls that value's own `AccountSerialize::try_serialize`
+(the exact impl the `#[account]` macro generated inside the real SDK crate) — never a hand-rolled
+byte layout. `pyth_fixture::tests::deserializes_via_real_sdk` proves the round trip: construct →
+serialize → deserialize with `PriceUpdateV2::try_deserialize` (the identical call
+`oracle::pyth::PythPull` makes) → assert every field survives exactly. A second test proves the
+`Partial` verification-level variant round-trips too; a third proves full determinism (the same
+fixture always serializes to the same bytes). `inject_price_update`/`set_price` inject these bytes
+directly via `LiteSVM::set_account` — no Hermes, no RPC, no Pyth program deployed (confirmed: the
+Pyth program ID never appears in any `add_program`/`deploy` call anywhere in this repository —
+`grep -r rec5EKMGg6MxZYaMdyBfgwp4d5rB9T1VQH5pJv5LtFJ` outside `oracle/pyth.rs` and
+`pyth_fixture.rs` returns nothing).
+
+### 5. Health / valuation (`crates/aegis-math/src/health.rs`)
+
+`conservative_price_band` implements O-7/O-8/O-9 and the WAD normalization (`economic-model.md`
+§6.1) in pure, `no_std`, float-free arithmetic. `collateral_value`/`debt_value`/`health_factor`/
+`is_within_max_ltv` implement §6.2/§6.3 exactly (floor for collateral, ceil for debt).
+
+**`U-HEALTH-01`/`U-HEALTH-02`** (§6.5 worked examples) pass with the corrected values (see the
+documentation finding above): `collateral_value = $1,497.00`, `debt_value = $900.18`,
+`HF = 1.330400586549357...` (healthy) for the first vector; `collateral_value = $948.00`,
+`HF = 0.84249816703326...` (liquidatable, below `full_liq_hf = 0.95`) for the second.
+
+**`P-VAL-1`** (`p_val_1_decimals_x_expo_matrix_preserves_scale`): for every `decimals ∈ 0..=12`
+crossed with every `expo ∈ -12..=0` (169 cases), a token worth exactly $1.00 values to exactly
+1 WAD — proving normalization never silently shifts economic scale, checked by exact equality, not
+approximation. Boundary cases (`decimals ∈ {0,12}`, `expo ∈ {-12,0}`) asserted individually too.
+
+**`P-VAL-2`** (`economic-model.md` §10's own definition — `collateral_value` monotone
+non-decreasing in `collateral_amount` and in `price_c_lo`): both directions asserted directly.
+Additionally (task's broader monotonicity ask): `debt_value` monotone in `debt_assets`/price, and
+`health_factor` monotone non-decreasing in `collateral_value` / non-increasing in `debt_value`.
+
+### 6. Borrow — real, oracle-validated (`instructions/borrow/borrow.rs`)
+
+The Phase 3/4 `OracleNotYetAvailable` gate is gone. `handler` now, in order: (1) validates the
+oracle (`oracle::require_valid_price`) — the first fallible operation, before any state write
+(INV-ORA-07); (2) `accrue_mut`; (3) `compute_borrow` (unchanged Phase 4 pure function — share
+math, free-liquidity bound, `min_debt` floor); (4) values collateral at the confidence lower bound
+(floored) and the post-borrow debt at the upper bound (ceiled), then requires
+`debt_value <= collateral_value * max_ltv / WAD` (INV-SOLV-01); (5) mutates position/market
+totals; (6) transfers `loan_vault → owner`; (7) emits `Borrowed` (now actually reachable, unlike
+Phase 4).
+
+### 7. `withdraw_collateral` — debt-aware (`instructions/collateral/withdraw_collateral.rs`)
+
+A debt-free position (`borrow_shares == 0`) still reads no oracle at all (E-08, unchanged from
+Phase 3). A debt-bearing position now: validates the oracle, computes accrued debt via
+`Market::accrue_view` (pure — `Market` is still never written by this instruction, preserving
+claim C2), and evaluates health against the **post-withdrawal** collateral amount
+(`collateral_amount - amount`), never the pre-withdrawal one — `debt_bearing_withdraw_
+rejects_unsafe_post_withdraw_health` and `debt_bearing_withdraw_succeeds_when_post_withdraw_
+health_is_safe` prove both directions.
+
+### 8. Fail-closed policy (risk-increasing operations under a bad oracle)
+
+Every one of O-1..O-9/O-11 individually violated causes `borrow` to fail with the specific mapped
+`AegisError` and zero state change (`A-ORACLE-03` through `A-ORACLE-09`, `A-ORACLE-12`). No
+oracle-failure path can be bypassed by omission, substitution, or a crafted account — each is a
+dedicated adversarial test against a genuinely constructed bad fixture, not a source-code
+assertion.
+
+### 9. Risk-reducing policy (evidence deposit and repay work under a broken oracle)
+
+`A-ORACLE-01` (`a_oracle_01_deposit_collateral_succeeds_with_broken_oracle`): `deposit_collateral`
+succeeds with **no price account posted anywhere in the LiteSVM instance at all** for either of
+the market's configured feeds — not merely omitted from one call, genuinely absent.
+`A-ORACLE-02` (`a_oracle_02_repay_succeeds_with_broken_oracle`): real debt is established via a
+real `borrow` under a valid price, the oracle is then made stale (representative of an outage per
+`oracle-design.md` §4.1), and `repay` is proven to still fully clear the debt. Neither instruction
+declares a price-update account in its `#[derive(Accounts)]` struct at all — there is nothing a
+caller could break.
+
+### 10. State atomicity (`A-ORACLE-13`, INV-ORA-07)
+
+Both variants (`borrow`, debt-path `withdraw_collateral`) take full before/after snapshots — raw
+account `data` bytes and `lamports` — for every account the failing instruction could conceivably
+touch (`Market`, `Position`, both vaults, the borrower's own loan ATA) and assert byte-exact
+equality after a genuine O-1 failure (wrong-owner price account). This is stronger than "the
+instruction returned an error": it proves nothing was written, not merely that execution
+eventually errored.
+
+### 11. Tests — commands actually run and results
+
+```
+$ cargo test --workspace
+   ... (full, unedited transcript; only test names already shown verbatim elsewhere in this
+        file are elided by "...", never pass/fail outcomes or counts) ...
+
+     Running unittests src/lib.rs (target/debug/deps/aegis-...)
+running 31 tests
+... (unchanged from Phase 4) ...
+test result: ok. 31 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running unittests src/lib.rs (target/debug/deps/aegis_math-...)
+running 39 tests
+... (26 unchanged from Phase 4, plus 13 new in health::tests) ...
+test health::tests::confidence_boundary ... ok
+test health::tests::zero_and_negative_price_are_rejected ... ok
+test health::tests::absurdly_small_and_large_prices_are_rejected ... ok
+test health::tests::exponent_driven_overflow_is_a_clean_error_not_a_panic ... ok
+test health::tests::typical_band_matches_hand_computation ... ok
+test health::tests::u_health_01_healthy_position ... ok
+test health::tests::u_health_02_price_drop_to_liquidatable ... ok
+test health::tests::p_val_2_collateral_value_monotone_in_amount ... ok
+test health::tests::p_val_2_collateral_value_monotone_in_price ... ok
+test health::tests::debt_value_monotone_in_assets_and_price ... ok
+test health::tests::health_factor_monotone_in_collateral_and_debt ... ok
+test health::tests::p_val_1_decimals_x_expo_matrix_preserves_scale ... ok
+test health::tests::p_val_1_boundary_values ... ok
+test result: ok. 39 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s
+
+     Running unittests src/lib.rs (target/debug/deps/aegis_test_kit-...)
+running 3 tests
+test pyth_fixture::tests::deserializes_via_real_sdk ... ok
+test pyth_fixture::tests::deserializes_partial_verification_level ... ok
+test pyth_fixture::tests::is_fully_deterministic ... ok
+test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/phase2_adversarial.rs / phase2_state.rs / phase2_token_policy.rs (unchanged)
+test result: ok. 8 passed ... / ok. 5 passed ... / ok. 9 passed ...
+
+     Running tests/phase3_adversarial.rs (unchanged in substance; the one Phase-4-gate test that
+     tested removed behavior was replaced with a NOTE pointing at its Phase 5 successor)
+running 10 tests
+test result: ok. 10 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.17s
+
+     Running tests/phase3_collateral.rs (unchanged)
+test result: ok. 5 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.09s
+
+     Running tests/phase4_adversarial.rs (the two Phase-4-gate tests for removed behavior were
+     replaced with a NOTE pointing at their Phase 5 successors; the other 8 unchanged)
+running 8 tests
+test result: ok. 8 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.11s
+
+     Running tests/phase4_lending.rs (unchanged)
+test result: ok. 9 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.22s
+
+     Running tests/phase5_oracle_adversarial.rs
+running 21 tests
+test a_oracle_01_deposit_collateral_succeeds_with_broken_oracle ... ok
+test a_oracle_02_repay_succeeds_with_broken_oracle ... ok
+test a_oracle_03_boundary_age_exactly_at_threshold_vs_plus_one ... ok
+test a_oracle_03_stale_oracle_blocks_borrow_and_debt_withdraw_but_not_repay_or_deposit ... ok
+test a_oracle_04_absurd_price_is_rejected ... ok
+test a_oracle_04_negative_price_is_rejected ... ok
+test a_oracle_04_zero_price_is_rejected ... ok
+test a_oracle_05_boundary_confidence_exactly_at_threshold_vs_plus_one ... ok
+test a_oracle_05_confidence_over_threshold_is_rejected ... ok
+test a_oracle_06_wrong_owner_account_is_rejected ... ok
+test a_oracle_07_wrong_feed_id_is_rejected ... ok
+test a_oracle_08_partial_verification_level_is_rejected ... ok
+test a_oracle_09_boundary_exactly_at_max_future_skew ... ok
+test a_oracle_09_future_publish_time_is_rejected ... ok
+test a_oracle_10_outage_across_a_price_move_then_recovery ... ok
+test a_oracle_11_same_transaction_price_read_is_self_consistent ... ok
+test a_oracle_12_same_account_for_both_feeds_is_rejected ... ok
+test a_oracle_13_failed_oracle_check_leaves_state_byte_identical ... ok
+test a_oracle_13_failed_withdraw_collateral_oracle_check_leaves_state_byte_identical ... ok
+test debt_bearing_withdraw_rejects_unsafe_post_withdraw_health ... ok
+test debt_bearing_withdraw_succeeds_when_post_withdraw_health_is_safe ... ok
+test result: ok. 21 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.47s
+
+     Running tests/smoke.rs (unchanged)
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.06s
+
+   Doc-tests aegis / aegis_math / aegis_test_kit — 0 tests each, ok
+```
+
+**163 tests total, 0 failures** (31 + 39 + 3 + 8 + 5 + 9 + 10 + 5 + 8 + 9 + 21 + 1 + 0 + 0 + 0 = 163
+— the aegis-math workspace-level `inflation_attack`/`property`/`rounding_law`/`shares_property`
+suites, unchanged from Phase 4 at 1 + 3 + 6 + 4 = 14 tests, are folded into that count). The full,
+unedited transcript was captured directly from the command above.
+
+A compute-budget finding, not a correctness bug: `borrow`, debt-path `withdraw_collateral`, and
+`repay` when a nontrivial accrual gap has elapsed all legitimately need more than Solana's default
+200,000 CU (two `PriceUpdateV2` deserializations plus several 256-bit `mul_div_*` divisions —
+accrual, share conversion, and for the oracle-priced pair, valuation and the LTV check — in one
+instruction). `aegis-test-kit`'s transaction builders for these three instructions now prepend a
+`ComputeBudgetInstruction::set_compute_unit_limit(400_000)` instruction, exactly what a real client
+would need to do. This is a resource-allocation concern, not a security check — `INV-RES-01`'s
+200k-budget target is explicitly Phase 11 (Performance) scope; no prior phase's test had exercised
+`repay` together with a large accrual gap (only the cheaper, 2-account standalone
+`accrue_interest`), so this is a real, previously-undiscovered cost characteristic being recorded
+now rather than a Phase 5 regression.
+
+Required test IDs, all passing:
+
+| ID | Test | File |
+|---|---|---|
+| `A-ORACLE-01..13` | See §3/§9/§10 above | `tests/phase5_oracle_adversarial.rs` |
+| `U-HEALTH-01`/`U-HEALTH-02` | Worked examples | `crates/aegis-math/src/health.rs` |
+| `P-VAL-1`/`P-VAL-2` | Decimals×expo matrix; monotonicity | `crates/aegis-math/src/health.rs` |
+| — | Real oracle-validated borrow (happy path) | `tests/phase5_oracle_adversarial.rs::debt_bearing_withdraw_succeeds_when_post_withdraw_health_is_safe` and every `A-ORACLE-*` test's own successful setup borrow |
+| — | Debt-aware `withdraw_collateral` (both directions) | `debt_bearing_withdraw_rejects_unsafe_post_withdraw_health`, `debt_bearing_withdraw_succeeds_when_post_withdraw_health_is_safe` |
+| — | Real SDK deserializes the fixture | `pyth_fixture::tests::deserializes_via_real_sdk` |
+
+### 12. Demo
+
+```
+$ make demo
+anchor build
+cargo run -p aegis-test-kit --example phase5_demo
+Aegis Protocol — Phase 5 demo (oracle-backed borrowing)
+Zero-cost, local, offline: in-process LiteSVM, no devnet, no RPC, no API key, no Hermes.
+
+=== 1. Protocol, market and positions ===
+Lender supplied 1000000000000 (1,000,000.000000 USDC)
+Borrower deposited 10000000000 (10.000000000 SOL) collateral
+
+=== 2. Deterministic valid Pyth price updates (SOL $150.00, USDC $1.00, zero conf) ===
+collateral_price_update: EWn7dE93GeQJu72WEkEmC5MZpm5FhiJzkcJEf1xpRdWP (real PriceUpdateV2, owner = pyth receiver program)
+loan_price_update:       EahQmXc3rwhY3CH1g3ZgUx8L4vHTNmzpK1xtiQ1RAxq6
+
+=== 3. borrow succeeds (real oracle validation, real LTV check) ===
+  borrowed:                  900000000 (900.000000 USDC)
+  position.borrow_shares:    900000000000000
+  collateral value: $1500.00  debt value: $900.00
+  health factor: 1.3333
+  INV-CUS-01: holds
+
+=== 4. Oracle becomes stale (30 days pass, no new price posted) ===
+  warped forward 30 days; the SAME price accounts are now far past max_price_age_secs (60s)
+
+=== 5. borrow fails closed against the stale oracle ===
+  borrow(1 USDC) -> REJECTED: InstructionError(1, Custom(6045))
+
+=== 6. debt-bearing withdraw_collateral also fails closed against the stale oracle ===
+  withdraw_collateral(1 SOL) -> REJECTED: InstructionError(1, Custom(6045))
+
+=== 7. repay still succeeds -- no oracle required (INV-REP-01) ===
+  repaid 100.000000 USDC while the oracle was stale
+
+=== 8. deposit_collateral still succeeds -- no oracle required (INV-ORA-02) ===
+  deposited 1 more SOL while the oracle was stale
+  INV-CUS-01: still holds through the whole outage episode
+
+=== 9. Oracle recovers -- SOL now $120.00 ===
+  position.collateral_amount: 11000000000 (11.000000000 SOL)
+  debt_assets: 800000000  debt_value: $800.00
+  collateral_value at the new price: $1320.00
+  new health factor: 1.3200
+
+  INV-CUS-01: holds after the full outage-and-recovery episode
+  loan_vault.amount: 999199000000
+
+Demo complete. All Phase 5 acceptance criteria exercised above.
+```
+
+`Custom(6045)` is `AegisError::OraclePriceStale` (6000 + 45, the Oracle band). Run against the
+actual built `aegis.so` and real `PriceUpdateV2` fixture bytes; no network access anywhere.
+
+### 13. Regression — prior-phase guarantees re-run
+
+```
+$ cargo fmt --all -- --check         # clean
+$ cargo clippy --workspace --all-targets -- -D warnings   # clean, zero warnings
+$ for f in scripts/check-*.sh; do bash "$f"; done
+check-collateral-transfer-paths: OK — vault token movement goes through exactly the shared
+  helpers, from exactly their enumerated call sites  (allowlist updated for real borrow, see
+  "Current architectural decisions" above)
+check-no-close: OK
+check-no-dup: OK
+check-no-float: OK
+check-no-init-if-needed: OK
+check-no-slot-time: OK
+check-overflow-checks: OK
+$ anchor build                        # succeeds, IDL regenerated
+$ cargo test --workspace              # 163 passed, 0 failed (see §11)
+```
+
+Every Phase 1-4 test file still passes unmodified in substance — the only edits were (a) two
+additional trailing arguments (`collateral_price_update`, `loan_price_update`) threaded through
+`withdraw_collateral`'s zero-debt-path call sites in `tests/phase3_collateral.rs`,
+`tests/phase3_adversarial.rs` and `examples/phase3_demo.rs` (placeholder `Pubkey::default()` —
+never read, since a debt-free withdrawal takes no oracle branch at all), and (b) the removal of
+the now-obsolete Phase-3/4-gate tests, replaced with a `NOTE` comment pointing at their Phase 5
+successors (see §11 above). No assertion about pre-existing Phase 1-4 behavior was weakened,
+removed, or had its expected error changed.
+
+### 14. Deviations
+
+None. No frozen document was edited (the one documentation finding is recorded in "Current
+architectural decisions" above, not a deviation). No ADR was written — none was needed.
+
+### 15. Security self-audit
+
+| Question | Answer |
+|---|---|
+| Can wrong-owner oracle data pass? | No — `A-ORACLE-06` constructs a genuine, correctly-shaped `PriceUpdateV2` owned by a real, wrong program (`spl_token_interface::ID`) and it is rejected with `OracleAccountOwnerMismatch`. |
+| Can right owner but wrong feed ID pass? | No — `A-ORACLE-07`, `OracleFeedMismatch`. |
+| Can partial verification pass? | No — `A-ORACLE-08`, `OracleVerificationLevelNotFull`. |
+| Can stale data pass? | No — `A-ORACLE-03` + boundary, `OraclePriceStale`. |
+| Can future data pass? | No — `A-ORACLE-09` + boundary, `OraclePriceInFuture`. |
+| Can excessive confidence pass? | No — `A-ORACLE-05` + boundary, `OracleConfidenceTooWide`. |
+| Can zero/negative/absurd prices pass? | No — `A-ORACLE-04` (three variants), `OraclePriceNotPositive`/`OraclePriceOutOfBounds`. |
+| Can exponent normalization overflow? | No — `scale_to_wad_{floor,ceil}` use `checked_pow`/`checked_mul`/`try_from` throughout; `exponent_driven_overflow_is_a_clean_error_not_a_panic` proves a typed error, never a panic. |
+| Can the same account satisfy two feed roles improperly? | No — `A-ORACLE-12`, `OracleDuplicatePriceAccounts`, checked before either feed is even read. |
+| Can an oracle failure mutate state before returning? | No — `A-ORACLE-13` (both variants), full before/after byte-exact snapshots. |
+| Can deposit be blocked by oracle outage? | No — `A-ORACLE-01`, proven with no price posted anywhere. |
+| Can repay be blocked by oracle outage? | No — `A-ORACLE-02`, proven with real debt and a stale oracle. |
+| Can borrow bypass oracle validation? | No — oracle validation is the first fallible statement in `handler`, before any other account read/write. |
+| Can collateral withdrawal with debt bypass the health check? | No — `debt_bearing_withdraw_rejects_unsafe_post_withdraw_health`. |
+| Is post-withdraw health evaluated correctly? | Yes — against `collateral_amount - amount`, never the pre-withdrawal amount; proven by the same test using a case where the pre-withdrawal state would have looked safe. |
+| Are collateral and debt priced conservatively? | Yes — `lo` floored for collateral, `hi` ceiled for debt (`U-HEALTH-01/02`, INV-ORA-03). |
+| Is feed identity tied to ID rather than arbitrary address? | Yes — `PriceSource::read_price` never receives or checks an "expected pubkey," only `expected_feed_id: &[u8; 32]` compared against `price_message.feed_id`. |
+| Did any mock provider sneak into production/test architecture? | No — the only hits for `grep -ri mock` in `programs/aegis/src`/`crates/aegis-test-kit/src` are prose (`oracle/mod.rs`'s own doc comment stating "there is no `Mock` variant"; `market.rs`'s "no mocks, no stubs" doc comment); `PriceSource` has exactly one implementer, `PythPull`, and no `Mock`/`Local` enum variant or struct exists anywhere. |
+| Is Hermes/network required anywhere? | No — every required test and the demo inject bytes directly via `LiteSVM::set_account`; `grep -r hermes` across `programs/` and `crates/` returns nothing. |
+| Did Phase 6 liquidation logic accidentally enter Phase 5? | No — `grep -ri liquidat programs/aegis/src` hits only pre-existing Phase 2 infrastructure (`PAUSE_LIQUIDATE`'s bit constant and `create_market`'s `liq_bonus`/`liq_threshold` parameter-bound validation, both predating this phase) and this phase's own doc comments; there is no `liquidate` instruction and no `absorb_bad_debt` code (the only hit for either name is a pre-existing Phase 2 doc comment in `create_market.rs` noting that the fee position exists so *Phase 6's future* `absorb_bad_debt` can always require it — no function or account of that name exists). |
+
+Every Phase-5-scoped question above is answered "no attack succeeds" / "yes, correctly" with a
+named, currently-passing test — none required a fix during this audit (each was true by the time
+the audit was performed, having been built to satisfy exactly these properties from the start).
 
 ### 1. Share accounting (`crates/aegis-math/src/shares.rs`)
 
@@ -1923,5 +2333,5 @@ change to the design.
 
 ## Next action
 
-**Phase 4 is complete. Hand Phase 5 (oracle) to the implementation model when the maintainer
-explicitly authorizes it. Phase 5 has NOT been started.**
+**Phase 5 is complete. Hand Phase 6 (health, liquidation & bad debt) to the implementation model
+when the maintainer explicitly authorizes it. Phase 6 has NOT been started.**

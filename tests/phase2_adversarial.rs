@@ -157,6 +157,53 @@ fn reinitializing_protocol_fails() {
 }
 
 #[test]
+fn reinitializing_market_fails() {
+    let (mut svm, admin) = deploy(aegis::id(), program_bytes());
+    let fee_recipient = setup_protocol(&mut svm, &admin);
+    let collateral_mint = create_spl_mint(&mut svm, &admin, 38, 9, admin.pubkey(), None);
+    let loan_mint = create_spl_mint(&mut svm, &admin, 39, 6, admin.pubkey(), None);
+
+    let args = reference_market_args(0, [1u8; 32], [2u8; 32], false);
+    let (first, market_pubkey, ..) = create_market(
+        &mut svm,
+        &admin,
+        collateral_mint,
+        loan_mint,
+        spl_token_interface::ID,
+        spl_token_interface::ID,
+        fee_recipient,
+        args,
+    );
+    first.expect("first create_market must succeed");
+
+    // Same (collateral_mint, loan_mint, config_id) derives the same Market PDA — replaying
+    // create_market against it must fail, not silently overwrite an existing market's state.
+    let args_again = reference_market_args(0, [9u8; 32], [9u8; 32], false);
+    let (second, replayed_market, ..) = create_market(
+        &mut svm,
+        &admin,
+        collateral_mint,
+        loan_mint,
+        spl_token_interface::ID,
+        spl_token_interface::ID,
+        fee_recipient,
+        args_again,
+    );
+    assert_eq!(
+        replayed_market, market_pubkey,
+        "same seeds must derive the same PDA"
+    );
+    assert!(
+        second.is_err(),
+        "reinitializing an existing market must fail"
+    );
+
+    // The original market's data is untouched by the failed replay attempt.
+    let market = aegis_test_kit::fetch_market(&svm, &market_pubkey);
+    assert_eq!(market.collateral_feed_id, [1u8; 32]);
+}
+
+#[test]
 fn reinitializing_position_fails() {
     let (mut svm, admin) = deploy(aegis::id(), program_bytes());
     let fee_recipient = setup_protocol(&mut svm, &admin);

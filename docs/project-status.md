@@ -1,8 +1,8 @@
 # Aegis — Project Status
 
 **Last updated: 2026-09-06**
-**Current phase: Phase 2 — State, PDAs & Custody Primitives — COMPLETE**
-**Next phase: Phase 3 — Collateral Flows — NOT STARTED**
+**Current phase: Phase 3 — Collateral Flows — COMPLETE**
+**Next phase: Phase 4 — Lending, Borrowing & Interest — NOT STARTED**
 
 > This file is the first thing any contributor or model reads after `AGENTS.md`. It must always
 > reflect reality. **"Implemented" never means "verified."** The five states below are tracked
@@ -32,7 +32,7 @@ rounded up.
 | 0 | Planning & design | ✅ **COMPLETE** | `phase-00-planning` |
 | 1 | Toolchain & repository foundation | ✅ **COMPLETE** | `phase-01-foundation` |
 | 2 | State, PDAs & custody primitives | ✅ **COMPLETE** | `phase-02-state` |
-| 3 | Collateral flows | ⬜ NOT STARTED | — |
+| 3 | Collateral flows | ✅ **COMPLETE** | `phase-03-collateral` |
 | 4 | Lending, borrowing & interest | ⬜ NOT STARTED | — |
 | 5 | Oracle | ⬜ NOT STARTED | — |
 | 6 | Health, liquidation & bad debt | ⬜ NOT STARTED | — |
@@ -44,10 +44,13 @@ rounded up.
 | 12 | Governance & upgrades | ⬜ NOT STARTED | — |
 | 13 | Integration & release | ⬜ NOT STARTED | — |
 
-**Phase 2 is complete.** `Protocol`, `Market`, `Position`, both custody vaults, and the Token-2022
-extension policy engine exist on-chain, exactly as frozen in `account-model.md` and
-`token-compatibility.md`. No token transfer, deposit, withdrawal, supply, borrow, repay, interest,
-oracle, or liquidation logic exists yet — those begin at Phases 3–6.
+**Phase 3 is complete.** `deposit_collateral`, `withdraw_collateral` (zero-debt path only), and
+`close_position` exist on-chain, exactly as frozen in `instruction-catalogue.md` §10/11/20 and
+scoped by `docs/phases/phase-03-collateral.md`. Real token custody now moves through the protocol
+for the first time — with measured-delta accounting on both SPL Token and Token-2022 transfer-fee
+mints — but there is still no supply, borrow, repay, interest, oracle, or liquidation logic; those
+begin at Phases 4–6. `Market` remains read-only in both collateral instructions, preserving the
+intra-market collateral parallelism claim (C2).
 
 ## Component status
 
@@ -63,12 +66,12 @@ oracle, or liquidation logic exists yet — those begin at Phases 3–6.
 | `initialize_protocol` / `create_market` / `init_position` | ✅ | ✅ | ✅ | ✅ | ⬜ |
 | Vaults & custody | ✅ | ✅ | ✅ | ✅ | ⬜ |
 | Token-2022 policy engine | ✅ | ✅ | ✅ | ✅ | ⬜ |
-| Collateral instructions | ⬜ | ⬜ | ⬜ | ✅ | ⬜ |
+| Collateral instructions (`deposit_collateral`, `withdraw_collateral`, `close_position`) | ✅ | ✅ | ✅ | ✅ | ⬜ |
 | Lend/borrow instructions | ⬜ | ⬜ | ⬜ | ✅ | ⬜ |
 | Oracle (Pyth adapter) | ⬜ | ⬜ | ⬜ | ✅ | ⬜ |
 | Liquidation & bad debt | ⬜ | ⬜ | ⬜ | ✅ | ⬜ |
 | Governance & migrations | ⬜ | ⬜ | ⬜ | ✅ | ⬜ |
-| `aegis-test-kit` (mints, market/position lifecycle, account decoding) | ✅ | ✅ | ✅ | ✅ | ⬜ |
+| `aegis-test-kit` (mints, market/position lifecycle, user token accounts, invariant checker) | ✅ | ✅ | ✅ | ✅ | ⬜ |
 | Invariant fuzzer | ⬜ | ⬜ | ⬜ | ✅ | ⬜ |
 | CU benchmarks | ⬜ | ⬜ | ⬜ | ✅ | ⬜ |
 | `labs/` (Anchor/native/Pinocchio) | ⬜ | ⬜ | ⬜ | ✅ | ⬜ |
@@ -96,10 +99,36 @@ account-model-local invariant catalogue in `account-model.md` §11:
 | INV-LIQ-06 | `A-ADM-04`'s derived-bound case, plus `derived_liquidation_bound_rejects_plausible_but_unsafe_params` (Tier 1, `aegis` crate) |
 | INV-ACCT-01..07, 09 (`account-model.md` §11) | `tests/phase2_state.rs`, `tests/phase2_adversarial.rs` — see the Phase 2 evidence section below for the exact mapping |
 
-**INV-ACCT-08** (`deposit_collateral`/`withdraw_collateral` do not declare `Market` writable) is
-**not yet testable**: its subject instructions are Phase 3 scope and do not exist yet. This is
-recorded here explicitly rather than silently skipped; it will be tested when Phase 3 ships those
-instructions.
+**INV-ACCT-08** (`deposit_collateral`/`withdraw_collateral` do not declare `Market` writable) —
+the Phase 2 deferral above is now **resolved**: both instructions exist and `A-PAR-01`
+(`tests/phase3_adversarial.rs::market_is_not_writable_in_collateral_instructions`) asserts
+`is_writable == false` on the `market` entry of each instruction's actual generated
+`Vec<AccountMeta>`, not merely by source inspection.
+
+Phase 3 is the first phase to test numbered invariants from `docs/invariants.md` §B (token
+custody), plus `account-model.md`'s local `INV-RES-02`:
+
+| ID | Tested by |
+|---|---|
+| INV-CUS-02 **[GLOBAL]** | `I-CUS-02` (`custody_invariant_holds_across_multiple_positions`) and `aegis_test_kit::invariants::assert_inv_cus_02`, called after every state-changing step in `tests/phase3_collateral.rs` and the Phase 3 demo |
+| INV-CUS-05 | `U-TOK-02` (`token2022_transfer_fee_deposit_credits_net_of_fee`) — credited is the measured post-`reload()` delta, proven to differ from the requested amount on a fee mint |
+| INV-CUS-06 | Every deposit/withdrawal test — `transfer_checked` is the only transfer primitive in `token/transfer.rs`; `A-CUS-06` (`deposit_rejects_wrong_mint`) proves the pinned-mint check fires |
+| INV-CUS-07 | `A-TOK-08`/`A-TOK-09` (`wrong_token_program_for_spl_market_is_rejected`, `wrong_token_program_for_token2022_market_is_rejected`) |
+| INV-CUS-08 | `A-CUS-08` (`direct_donation_is_never_credited`) plus `assert_inv_cus_02_detects_uncredited_donation`, which proves the checker itself would catch the resulting mismatch |
+| INV-AUTH-02 | `A-AUTH-02` (`non_owner_withdraw_fails`) |
+| INV-AUTH-03 | `A-AUTH-03` (`deposit_by_non_owner_succeeds`), together with `A-AUTH-02` for the asymmetric owner-required side |
+| INV-LIFE-02 | `U-LIFE-01` (`close_position_requires_exact_zero_balances`) |
+| INV-LIFE-03 | `A-LIFE-02` (`closed_position_cannot_be_revived_with_stale_data`) |
+| INV-RES-02 (`account-model.md` §8 / `invariants.md` §L) | `A-PAR-01` (`market_is_not_writable_in_collateral_instructions`) |
+| INV-CUS-04 (code-review/grep, assigned Phase 13 but exercisable now against the two paths that exist) | `A-CUS-04` — `scripts/check-collateral-transfer-paths.sh` (new CI-CUSTODY-PATHS guard) |
+
+`INV-CUS-05` and `INV-CUS-08` are formally assigned to Phases 7 and 4 respectively in
+`docs/invariants.md`'s per-phase column, but `docs/phases/phase-03-collateral.md`'s own test list
+requires `U-TOK-02` and `A-CUS-08` in Phase 3 — both mechanisms (Token-2022 vaults, measured-delta
+crediting) already exist from Phase 2/3, so this phase exercises them early rather than waiting for
+their nominally-assigned phase. This is recorded here as intentional early coverage, the same way
+Phase 2 recorded its `INV-ACCT-*`/`INV-ACC-*` naming overlap — not a frozen-document conflict, and
+nothing in either document was edited.
 
 **Naming note:** `account-model.md` §11 defines a 9-item "Account-model invariant summary" using an
 `INV-ACCT-*` prefix, distinct from `invariants.md`'s own master `INV-ACC-*` series (accounting,
@@ -109,8 +138,9 @@ task instructions referenced "`INV-ACCT-01..09`", which only exist in `account-m
 nine are addressed above/below. Nothing in either document was edited to resolve this — it is
 noted here as a cross-reference clarification, not a frozen-document conflict.
 
-Still **0 of the 87 numbered `invariants.md` invariants assigned to later phases** are implemented
-or tested — expected at this point; see `docs/invariants.md` for the full per-phase assignment.
+Still **0 of the 87 numbered `invariants.md` invariants assigned to Phases 4-13** beyond the early
+coverage noted above are implemented or tested — expected at this point; see `docs/invariants.md`
+for the full per-phase assignment.
 
 ---
 
@@ -253,6 +283,386 @@ No ADR was added or changed in Phase 2 either. Two implementation-level API delt
 names `spl-token-interface`/`spl-token-2022-interface`, not `spl-token`/`spl-token-2022`; LiteSVM
 ships real embedded SPL Token / Token-2022 program bytecode; `CpiContext::new` takes a `Pubkey`,
 not an `AccountInfo`) — none of them change a Phase 0 architectural decision.
+
+---
+
+## Phase 3 — evidence
+
+### 1. `deposit_collateral`
+
+`programs/aegis/src/instructions/collateral/deposit_collateral.rs` implements
+`instruction-catalogue.md` §10 exactly: `depositor` need not be `position.owner` (INV-AUTH-03);
+`market` is `Box<Account<'info, Market>>` **without** `#[account(mut)]`, so Anchor generates a
+read-only `AccountMeta` for it (proven by `A-PAR-01`, not inferred); `collateral_vault` is
+double-validated (`seeds = [COLLATERAL_VAULT_SEED, market], bump = market.collateral_vault_bump`
+**and** `address = market.collateral_vault`); `collateral_mint` is pinned by `address =
+market.collateral_mint`; the token program is pinned by an explicit `require_keys_eq!` against
+`market.collateral_token_program` (T-11 — the interface type alone accepts either program). No
+oracle account, no pause check, no health check exist anywhere in this instruction's accounts or
+handler.
+
+### 2. Measured-delta accounting
+
+`programs/aegis/src/token/transfer.rs::transfer_checked_in` implements the mandatory sequence from
+`account-model.md` §6.4 and `token-compatibility.md` §5.3 verbatim:
+
+```rust
+let before = vault.amount;
+token_interface::transfer_checked(/* ... */, amount, decimals)?;
+vault.reload()?;                                    // MANDATORY — pre-CPI data is stale
+let after = vault.amount;
+after.checked_sub(before).ok_or_else(|| error!(AegisError::VaultAccountingError))
+```
+
+`deposit_collateral`'s handler credits `position.collateral_amount` by exactly the returned
+`credited` value, never by the requested `amount`. Evidence that this actually matters, not just
+that the code looks right:
+
+```
+U-TOK-01 (SPL, no fee):        requested = 5_000_000_000  credited = 5_000_000_000  (equal)
+U-TOK-02 (Token-2022, 5% fee): requested = 1_000_000_000  credited =   950_000_000  (fee = 50_000_000)
+```
+
+— both figures read directly from on-chain state (`position.collateral_amount` and the vault's
+own `amount` field) after a real CPI through the actual embedded Token-2022 program, never
+computed by the test and asserted against itself.
+
+### 3. `token/transfer.rs`
+
+One inbound helper (`transfer_checked_in`, measured-delta, mandatory `reload()`) and one outbound
+helper (`transfer_checked_out`, `invoke_signed` via `CpiContext::with_signer`), both built on
+`anchor_spl::token_interface::transfer_checked` — which dispatches to whichever token program the
+caller's `CpiContext::new(token_program.key(), ...)` names, so one code path serves both SPL Token
+and Token-2022 (`token-compatibility.md` §5.1–5.3). Neither helper is called from anywhere except
+its one intended collateral instruction — enforced by the new `scripts/check-collateral-transfer-
+paths.sh` guard (`A-CUS-04`/INV-CUS-04), which greps for every call site of both helpers and of the
+raw `token_interface::transfer_checked` function and fails if either appears outside its expected
+home.
+
+### 4. `withdraw_collateral` — the Phase 3 zero-debt path and the debt hard gate
+
+`programs/aegis/src/instructions/collateral/withdraw_collateral.rs` requires `owner` as an actual
+transaction `Signer` with `has_one = owner @ AegisError::NotPositionOwner` (INV-AUTH-02) — the
+asymmetric counterpart to deposit's no-signer-required depositor. Before touching any balance, it
+checks:
+
+```rust
+require!(ctx.accounts.position.borrow_shares == 0, AegisError::OracleNotYetAvailable);
+```
+
+This is the *only* check on the debt branch — there is no placeholder price, no "assumed healthy"
+path, and no oracle account anywhere in the `Accounts` struct (`docs/phase-roadmap.md` "Sequencing
+the oracle dependency"). Because no Phase 1-3 instruction can ever set `position.borrow_shares !=
+0`, the adversarial test injects that state directly via `svm.set_account` — the same legitimate
+fixture technique Phase 2's `attacker_owned_fake_protocol_account_is_rejected` already established
+— and proves the instruction refuses it with exactly `OracleNotYetAvailable`, leaving the position
+untouched.
+
+On success, the vault-outflow CPI is signed by the `Market` PDA using its own stored, canonical
+seeds and bump — never a caller-supplied bump (no instruction in this phase accepts one):
+
+```rust
+let signer_seeds: &[&[u8]] = &[
+    MARKET_SEED, market.collateral_mint.as_ref(), market.loan_mint.as_ref(),
+    &config_id_bytes, &[market.bump],
+];
+```
+
+`Market` is never written here either — same read-only `Box<Account<'info, Market>>` pattern as
+`deposit_collateral`, proven by the same `A-PAR-01` test on this instruction's own generated
+account metadata.
+
+### 5. `close_position`
+
+`programs/aegis/src/instructions/position/close_position.rs` requires the **exact** equality
+`supply_shares == 0 && borrow_shares == 0 && collateral_amount == 0` (never a dust tolerance) and
+uses Anchor's `close = owner` — lamports returned, discriminator zeroed, account reassigned to the
+System Program and resized to zero (`common::close` in `anchor-lang` 1.2.0), not the removed
+`CLOSED_ACCOUNT_DISCRIMINATOR` pattern. `U-LIFE-01` proves the precondition (a premature close on a
+still-funded position fails with `PositionNotEmpty`; the same position closes successfully once
+its collateral is withdrawn to zero). `A-LIFE-02` proves revival safety: after close, a `deposit_
+collateral` call against the stale address fails (no discriminator left to deserialize), and
+`init_position` can recreate the same PDA later — always completely empty.
+
+### 6. `aegis-test-kit::invariants` — the INV-CUS-02 checker
+
+`crates/aegis-test-kit/src/invariants.rs::assert_inv_cus_02` asserts the **exact** integer equality
+`collateral_vault.amount == Σ(position.collateral_amount) + market.collateral_fee_accrued` — no
+epsilon, no approximate comparison. It is called after every state-changing step in
+`tests/phase3_collateral.rs` and in the Phase 3 demo (§8 below). Its own falsifiability is proven,
+not assumed: `assert_inv_cus_02_detects_uncredited_donation` (`#[should_panic(expected = "INV-
+CUS-02 violated")]`) performs a direct donation to the vault and asserts the checker panics —
+exactly the AGENTS.md §8 requirement that "an invariant without a falsifying test is a hope."
+
+### 7. Tests
+
+```
+$ cargo test --workspace
+running 20 tests
+test state::market::tests::close_factor_below_minimum_is_rejected ... ok
+test state::market::tests::derived_liquidation_bound_rejects_plausible_but_unsafe_params ... ok
+test state::market::tests::fee_above_max_is_rejected ... ok
+test state::market::tests::irm_rate_exceeding_max_is_rejected ... ok
+test state::market::tests::len_matches_account_model_spec ... ok
+test state::market::tests::irm_params_reference_set_is_valid ... ok
+test state::market::tests::irm_u_kink_out_of_range_is_rejected ... ok
+test state::market::tests::full_liq_hf_zero_is_rejected ... ok
+test state::market::tests::liq_bonus_above_max_is_rejected ... ok
+test state::market::tests::liq_protocol_fee_above_max_is_rejected ... ok
+test state::market::tests::max_ltv_must_be_below_liq_threshold ... ok
+test state::market::tests::oracle_config_conf_bps_out_of_range_is_rejected ... ok
+test state::market::tests::oracle_config_price_age_out_of_range_is_rejected ... ok
+test state::market::tests::oracle_config_reference_is_valid ... ok
+test state::market::tests::reference_parameter_set_is_valid ... ok
+test state::market::tests::zero_min_debt_is_rejected ... ok
+test state::position::tests::len_matches_account_model_spec ... ok
+test state::protocol::tests::len_matches_account_model_spec ... ok
+test token::policy::tests::transfer_fee_mint_requires_transfer_fee_amount_and_immutable_owner ... ok
+test token::policy::tests::vault_extensions_always_include_immutable_owner ... ok
+test result: ok. 20 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running unittests src/lib.rs (target/debug/deps/aegis_math-...)
+running 5 tests (fixed::tests::{division_by_zero, ceil_only_rounds_up_on_a_nonzero_remainder,
+result_overflow, known_vectors, large_multiplication_survives_256_bit_intermediate})
+test result: ok. 5 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/property.rs
+running 3 tests (never_panics, floor_le_ceil_le_floor_plus_one, matches_bignum_reference)
+test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.02s
+
+     Running unittests src/lib.rs (target/debug/deps/aegis_test_kit-...)
+running 0 tests
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/phase2_adversarial.rs
+running 8 tests
+test reinitializing_protocol_fails ... ok
+test attacker_owned_fake_protocol_account_is_rejected ... ok
+test non_admin_cannot_create_market ... ok
+test non_canonical_bump_is_rejected ... ok
+test reinitializing_position_fails ... ok
+test reference_parameter_set_is_accepted_on_chain ... ok
+test reinitializing_market_fails ... ok
+test out_of_bounds_market_parameters_are_rejected ... ok
+test result: ok. 8 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.16s
+
+     Running tests/phase2_state.rs
+running 5 tests
+test seed_prefixes_are_pairwise_distinct ... ok
+test protocol_initializes_with_expected_admin_and_layout ... ok
+test create_market_does_not_write_protocol ... ok
+test create_market_spl_and_position_lifecycle ... ok
+test two_markets_same_asset_pair_different_config_id_coexist ... ok
+test result: ok. 5 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.09s
+
+     Running tests/phase2_token_policy.rs
+running 9 tests
+test transfer_hook_mint_rejected_as_collateral ... ok
+test permanent_delegate_mint_rejected ... ok
+test default_account_state_frozen_mint_rejected ... ok
+test tier_a_extensions_are_accepted_and_recorded ... ok
+test mint_close_authority_mint_rejected ... ok
+test unrecognized_extension_mint_rejected ... ok
+test transfer_fee_mint_accepted_as_collateral_rejected_as_loan_asset ... ok
+test freeze_authority_requires_acknowledgement ... ok
+test wrong_token_program_for_mint_is_rejected ... ok
+test result: ok. 9 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.14s
+
+     Running tests/phase3_adversarial.rs
+running 11 tests
+test market_is_not_writable_in_collateral_instructions ... ok
+test deposit_rejects_substituted_vault ... ok
+test deposit_by_non_owner_succeeds ... ok
+test deposit_rejects_wrong_mint ... ok
+test direct_donation_is_never_credited ... ok
+test withdraw_with_outstanding_debt_returns_oracle_not_yet_available ... ok
+test assert_inv_cus_02_detects_uncredited_donation - should panic ... ok
+test non_owner_withdraw_fails ... ok
+test closed_position_cannot_be_revived_with_stale_data ... ok
+test wrong_token_program_for_spl_market_is_rejected ... ok
+test wrong_token_program_for_token2022_market_is_rejected ... ok
+test result: ok. 11 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.17s
+
+     Running tests/phase3_collateral.rs
+running 5 tests
+test spl_deposit_credits_exact_amount ... ok
+test withdraw_all_with_zero_debt ... ok
+test token2022_transfer_fee_deposit_credits_net_of_fee ... ok
+test custody_invariant_holds_across_multiple_positions ... ok
+test close_position_requires_exact_zero_balances ... ok
+test result: ok. 5 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.11s
+
+     Running tests/smoke.rs
+running 1 test
+test ping_deploys_and_invokes_offline ... ok
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.07s
+
+   Doc-tests aegis / aegis_math / aegis_test_kit — 0 tests each, ok
+```
+**67 tests, 0 failures.**
+
+Required test IDs, all passing, and where each lives:
+
+| ID | Test | File |
+|---|---|---|
+| `U-TOK-01` | SPL deposit: `credited == amount` | `tests/phase3_collateral.rs::spl_deposit_credits_exact_amount` |
+| `U-TOK-02` | Transfer-fee deposit: `credited == amount − fee` | `tests/phase3_collateral.rs::token2022_transfer_fee_deposit_credits_net_of_fee` |
+| `U-WDC-01` | Withdraw all with zero debt | `tests/phase3_collateral.rs::withdraw_all_with_zero_debt` |
+| `U-LIFE-01` | Close requires exact zeros | `tests/phase3_collateral.rs::close_position_requires_exact_zero_balances` |
+| `A-LIFE-02` | Revival attempt after close | `tests/phase3_adversarial.rs::closed_position_cannot_be_revived_with_stale_data` |
+| `A-CUS-01` | Substituted vault | `tests/phase3_adversarial.rs::deposit_rejects_substituted_vault` |
+| `A-CUS-04` | Transfer-path audit (grep) | `scripts/check-collateral-transfer-paths.sh` |
+| `A-CUS-06` | Wrong mint | `tests/phase3_adversarial.rs::deposit_rejects_wrong_mint` |
+| `A-CUS-08` | Direct donation never credited | `tests/phase3_adversarial.rs::direct_donation_is_never_credited` (+ `assert_inv_cus_02_detects_uncredited_donation`) |
+| `A-AUTH-02` | Non-owner withdraw fails | `tests/phase3_adversarial.rs::non_owner_withdraw_fails` |
+| `A-AUTH-03` | Deposit by non-owner succeeds | `tests/phase3_adversarial.rs::deposit_by_non_owner_succeeds` |
+| `A-TOK-08` | Wrong token program (SPL market) | `tests/phase3_adversarial.rs::wrong_token_program_for_spl_market_is_rejected` |
+| `A-TOK-09` | Wrong token program (Token-2022 market) | `tests/phase3_adversarial.rs::wrong_token_program_for_token2022_market_is_rejected` |
+| `A-PAR-01` | `Market` not writable | `tests/phase3_adversarial.rs::market_is_not_writable_in_collateral_instructions` |
+| `I-CUS-02` | INV-CUS-02 across multiple positions | `tests/phase3_collateral.rs::custody_invariant_holds_across_multiple_positions` |
+
+Also exercised, not on the required list: `withdraw_with_outstanding_debt_returns_oracle_not_yet_available`
+(the debt hard-gate, task item 16) and per-step `assert_inv_cus_02` calls throughout
+`tests/phase3_collateral.rs` and the demo.
+
+### 8. Adversarial evidence
+
+Every adversarial test asserts a **specific** `AegisError` or, where the rejection is a Anchor
+framework check, is_err() on a substitution that cannot syntactically produce a specific `AegisError`
+(the same convention Phase 2 established):
+
+| Attack | Result |
+|---|---|
+| Substituted (non-canonical) collateral vault | Anchor `ConstraintSeeds`/`ConstraintAddress` rejection |
+| Wrong collateral mint | `VaultMintMismatch` |
+| Wrong token program, SPL market | `TokenProgramMismatch` |
+| Wrong token program, Token-2022 market | `TokenProgramMismatch` |
+| Direct donation to the vault | Not credited to any position (`position.collateral_amount` unchanged); `assert_inv_cus_02` then panics, proving the checker would catch a real accounting bug of this shape |
+| Non-owner signs and claims to be `owner` | `NotPositionOwner` |
+| Stranger deposits into someone else's position | **Succeeds** — by design (INV-AUTH-03) |
+| Withdraw with `position.borrow_shares > 0` (fixture-injected) | `OracleNotYetAvailable`, position left unchanged |
+| Close with nonzero `collateral_amount` | `PositionNotEmpty` |
+| Deposit against a closed (stale) position | Anchor account-deserialization rejection (no discriminator left) |
+| `deposit_collateral`/`withdraw_collateral` `market` account metadata | `is_writable == false` in both (own account-metas inspection, not source review) |
+
+### 9. Demo
+
+```
+$ make demo
+anchor build
+cargo run -p aegis-test-kit --example phase3_demo
+Aegis Protocol — Phase 3 demo (collateral flows)
+Zero-cost, local, offline: in-process LiteSVM, no devnet, no RPC, no API key.
+
+Deployed program 2GtoBADM175vkjf5UYpbD198Ry1cJadXMGo8sCQvXndh into LiteSVM.
+Admin/deployer:  GmaDrppBC7P5ARKV8g3djiwP89vz1jLK23V2GBjuAEGB
+
+=== 1. Protocol, markets and positions ===
+Protocol initialized. admin=GmaDrppBC7P5ARKV8g3djiwP89vz1jLK23V2GBjuAEGB guardian=9hSR6S7WPtxmTojgo6GG3k4yDPecgJY292j7xrsUGWBu
+SPL market:         FH3ZCzxQmK4LkVoBJi27YBccoSq68FUUDSsYA7GTKsg4
+  collateral_vault: HKyEdmNqhZuWoU5wkcvb5hC6AjkHU2NZ94woJFcfw2cv
+Token-2022 market:  BJc8KXjjLDzZe61uZQwgYvNejTy36dnBqAL49gUcyKym  (5% transfer fee on collateral)
+  collateral_vault: 7K64vgh7NjgUBFrBYTdRyxUrux3HN5xLGH3kwnAXnpHd
+SPL market position:        GzD7si8LgCqKdEbSodFSoQC5FCHNTxvMqn4k6AKhuDqv (owner GhFJh9xhWQULf6W1WJLNTViiTWEs4wAj3FevZ616wxL2)
+Token-2022 market position: G7LRN7Km8Ggb4uRD9RRJYDHFEu3JeQQ1kfPgGEiSyKcA (owner HqznL4EpJTbWZmqqetb4sJPftBUN1s6uNdQURBAfAsBr)
+
+=== 2. SPL collateral deposit (no fee) ===
+  requested: 5000000000
+  credited:  5000000000
+  INV-CUS-02: holds exactly (vault == Σ positions + fee_accrued)
+
+=== 3. Token-2022 transfer-fee collateral deposit ===
+  requested: 1000000000
+  credited:  950000000  (fee = 50000000)
+  INV-CUS-02: holds exactly against the credited (not requested) amount
+
+=== 4. Zero-debt withdrawal (SPL market) ===
+  withdrawn: 5000000000
+  position.collateral_amount now: 0
+  INV-CUS-02: holds exactly
+
+=== 5. close_position — rent reclaimed ===
+  position rent (lamports):        1900080
+  owner balance before close:       9999995000
+  owner balance after close:        10001890080
+  position account after close:     purged
+
+Demo complete. All Phase 3 acceptance criteria exercised above.
+```
+
+### 10. Regression — Phase 1/2 guarantees re-run
+
+```
+$ cargo fmt --all --check
+(no output — clean)
+
+$ cargo clippy --workspace --all-targets -- -D warnings
+    Finished `dev` profile [unoptimized + debuginfo] target(s)
+(zero warnings)
+
+$ for s in scripts/check-*.sh; do ./"$s"; done
+check-collateral-transfer-paths: OK — vault token movement goes through exactly the two Phase 3 helpers, from exactly their two intended call sites
+check-no-close: OK — no close constraint targets Market or Protocol
+check-no-dup: OK — no 'dup' constraint in programs/
+check-no-float: OK — no f32/f64 in programs/ or crates/aegis-math/
+check-no-init-if-needed: OK — no init_if_needed constraint or feature in use
+check-no-slot-time: OK — no Clock.slot usage in programs/
+check-overflow-checks: OK — overflow-checks = true is set in [profile.release]
+
+$ cargo test --test smoke
+test ping_deploys_and_invokes_offline ... ok
+
+$ cargo test --test phase2_state --test phase2_adversarial --test phase2_token_policy
+(all 22 Phase 2 tests pass unchanged — see §7 above for the full transcript)
+```
+`check-no-close.sh`'s own comment already anticipated `close_position` (`Position` *is* closable,
+`Market`/`Protocol` are not) — it required no change and correctly does not flag
+`close_position.rs`'s `close = owner`.
+
+`anchor build` (SBF target) required no new stack-frame workaround beyond Phase 2's `Box<Account<
+'info, Market>>` pattern, which is reused unchanged in `DepositCollateral`, `WithdrawCollateral`
+and `ClosePosition`.
+
+### 11. Deviations
+
+None requiring an ADR. One design decision worth recording (not a frozen-document change):
+**`withdraw_collateral` does not check any pause bit in Phase 3.** `instruction-catalogue.md` §11's
+account list includes `[R][PDA] protocol` — needed only for the eventual pause check — but
+`phase-03-collateral.md`'s own scope/test list never mentions pause for either collateral
+instruction (unlike `deposit_collateral`, whose scope note explicitly says "no pause"). No
+Phase 1-3 instruction can set `Market.paused` or `Protocol.paused` to anything but `0`
+(`set_market_pause`/`set_protocol_pause` are Phase 12 scope), so a pause check today would be
+dead code with no way to exercise it honestly. Pause enforcement for `withdraw_collateral` is
+deferred to Phase 12 alongside those admin instructions, consistent with `INV-ADM-*`'s Phase-12
+assignment in `docs/invariants.md`. `Market` is not needed for this either way, and remains
+read-only.
+
+---
+
+## Phase 3 self-audit
+
+Performed before declaring Phase 3 complete, per the task's final-audit checklist.
+
+| Question | Answer |
+|---|---|
+| Can a user credit themselves for a transfer fee they did not receive? | No — `credited` is `after − before` measured post-CPI-`reload()`, never the requested `amount`; `U-TOK-02` proves `credited < requested` on a real 5% fee mint. |
+| Is vault state read before CPI and stale after CPI? | No — `before` is read pre-CPI; `vault.reload()` runs immediately after the CPI and before `after` is read. |
+| Is `reload()` missing anywhere? | No — `transfer_checked_in` is the only inbound-transfer function in the program (enforced by `scripts/check-collateral-transfer-paths.sh`) and it always reloads; outbound transfers correctly do not reload (the recipient bears the fee, not the protocol's own accounting). |
+| Can a direct donation inflate a user's internal balance? | No — `direct_donation_is_never_credited` proves `position.collateral_amount` is unchanged by a raw SPL Token transfer into the vault; `assert_inv_cus_02_detects_uncredited_donation` proves the checker would flag the resulting surplus as a violation if it were ever mistaken for legitimate accounting. |
+| Can the wrong vault be substituted? | No — double validation (`seeds`/`bump` **and** `address = market.collateral_vault`); `deposit_rejects_substituted_vault` attempts it with an otherwise-valid token account and is rejected. |
+| Can wrong mint/token program pass? | No — `VaultMintMismatch` and `TokenProgramMismatch` respectively, each with a dedicated test (`deposit_rejects_wrong_mint`, `wrong_token_program_for_{spl,token2022}_market_is_rejected`). |
+| Can a non-owner withdraw? | No — `has_one = owner @ NotPositionOwner`; `non_owner_withdraw_fails` has an attacker sign and name themselves as `owner`, rejected. |
+| Can the owner withdraw with debt before oracle integration? | No — `require!(borrow_shares == 0, OracleNotYetAvailable)` is unconditional and is the first state-dependent check in the handler; `withdraw_with_outstanding_debt_returns_oracle_not_yet_available` proves it against a fixture-injected nonzero `borrow_shares`, since no real instruction can produce one yet. |
+| Can `Market` accidentally become writable? | No — `A-PAR-01` inspects the actual `Vec<AccountMeta>` Anchor generates for both `DepositCollateral` and `WithdrawCollateral` and asserts `is_writable == false` on the `market` entry — not inferred from the `#[derive(Accounts)]` source. |
+| Can the protocol infer user ownership from vault balance? | No — `assert_inv_cus_02` sums `Position.collateral_amount` fields read from program state; nothing in the program itself ever re-derives a position's balance from the vault's total. |
+| Can `Position` be closed with non-zero state? | No — the three-field exact-equality check (`PositionNotEmpty`); `close_position_requires_exact_zero_balances` proves the rejection on a still-funded position and the acceptance once it is empty. |
+| Can a closed `Position` be revived improperly? | No — Anchor's `close =` zeroes the discriminator and reassigns the account to the System Program; `closed_position_cannot_be_revived_with_stale_data` proves both that a post-close instruction against the stale address fails, and that a later `init_position` can only recreate it empty. |
+| Are PDA signer seeds canonical? | Yes — the outbound CPI's `signer_seeds` are built from `market.collateral_mint`, `market.loan_mint`, `market.config_id`, and `market.bump` — all read from the already-validated `Market` account, never from a caller-supplied argument (no instruction in this phase accepts a bump). |
+| Is token authority accidentally user-controlled? | No — the outbound transfer's `authority` is always `market.to_account_info()`; no user `AccountInfo` is ever passed as the CPI authority for vault outflow. |
+| Did I implement any Phase 4 lending logic by accident? | No — grep-verified: `grep -rniE "pub fn (supply|borrow|repay|liquidate|accrue|absorb_bad_debt)" programs/aegis/src/` returns nothing. |
+
+No changes were forced by this audit beyond what is already reflected in the code above — every
+question was checked against a test that already existed by the time the audit was performed.
 
 ---
 
@@ -925,5 +1335,5 @@ change to the design.
 
 ## Next action
 
-**Phase 2 is complete. Hand Phase 3 (collateral flows) to the implementation model when the
-maintainer explicitly authorizes it. Phase 3 has NOT been started.**
+**Phase 3 is complete. Hand Phase 4 (lending, borrowing & interest) to the implementation model
+when the maintainer explicitly authorizes it. Phase 4 has NOT been started.**

@@ -2,14 +2,15 @@
 
 **A risk-first, isolated-market, overcollateralized lending protocol on Solana.**
 
-> **STATUS: PHASE 2 — STATE, PDAs AND CUSTODY PRIMITIVES. NO LENDING PROTOCOL LOGIC EXISTS.**
-> Aegis is under construction. Phase 2 ships the `Protocol`, `Market` and `Position` account
-> structs exactly as frozen in `account-model.md`; the `initialize_protocol`, `create_market` and
-> `init_position` instructions; both custody vaults with the `Market` PDA as authority and
-> Token-2022-aware sizing; and the positive Token-2022 extension allowlist. There is still no
-> deposit, withdrawal, supply, borrow, repay, interest, oracle, or liquidation — those begin at
-> Phases 3–6. See [`docs/project-status.md`](docs/project-status.md) for the authoritative state of
-> every component.
+> **STATUS: PHASE 3 — COLLATERAL FLOWS. NO LENDING PROTOCOL LOGIC EXISTS.**
+> Aegis is under construction. Phase 3 adds real collateral custody on top of Phase 2's account
+> model: `deposit_collateral` (no oracle, no pause, `Market` read-only, measured-delta accounting
+> on both SPL Token and Token-2022 transfer-fee mints), `withdraw_collateral` (the zero-debt path
+> only — a position with outstanding `borrow_shares` is refused with `OracleNotYetAvailable`, a
+> hard sequencing gate rather than a bypass), and `close_position`. There is still no supply,
+> borrow, repay, interest, oracle, or liquidation — those begin at Phases 4–6. See
+> [`docs/project-status.md`](docs/project-status.md) for the authoritative state of every
+> component.
 
 ---
 
@@ -86,20 +87,23 @@ Native Solana Rust and Pinocchio appear in scoped, benchmarked labs — not in p
 
 ## Quickstart
 
-**Right now (Phase 2):** `programs/aegis` implements `Protocol`, `Market`, and `Position` accounts;
-`initialize_protocol`, `create_market`, and `init_position`; two custody vault token accounts per
-market (SPL Token or Token-2022, sized correctly for whatever extensions are present, never
-hardcoded to 165 bytes); and the Token-2022 positive extension allowlist with per-role enforcement
-and freeze-authority acknowledgement. `create_market` performs no token transfers — this phase
-proves custody *structure*, not lending behavior. There is still no deposit, withdrawal, supply,
-borrow, repay, interest accrual, oracle, or liquidation, and no SDK/app yet.
+**Right now (Phase 3):** on top of everything Phase 2 shipped, `programs/aegis` implements
+`deposit_collateral` (no oracle, no pause check, `Market` never written, measured-delta crediting
+via a mandatory post-CPI vault reload), `withdraw_collateral` (owner-signed, zero-debt path only —
+any `borrow_shares > 0` is refused with `OracleNotYetAvailable`, never a placeholder price), and
+`close_position` (exact-zero balance checks, Anchor's `close =`, safe against revival). A direct
+token transfer into a vault, outside these instructions, is never credited to any position
+(INV-CUS-08) — the vault balance is never a source of truth for individual ownership. There is
+still no supply, borrow, repay, interest accrual, oracle, or liquidation, and no SDK/app yet.
 
 ```bash
 make setup   # verify the pinned toolchain (Solana CLI, Anchor, Surfpool, Node) is installed
 make build   # anchor build — compiles `programs/aegis` and generates its IDL
 make test    # cargo test --workspace — offline, no network, no secrets (the load-bearing command)
-make demo    # protocol init, an SPL market, a Token-2022 market, positions, a rejection table —
-             # offline against an in-process LiteSVM (see docs/phases/phase-02-state.md "Demo")
+make demo    # SPL and Token-2022 transfer-fee collateral deposits (requested vs. credited),
+             # INV-CUS-02 after every step, a zero-debt withdrawal, and closing a position with
+             # rent reclaimed — offline against an in-process LiteSVM
+             # (see docs/phases/phase-03-collateral.md "Demo")
 ```
 
 `make fuzz`, `make bench`, and `make app` exist as stubs that name the phase that implements them

@@ -34,8 +34,13 @@ pub mod token;
 // public re-export; it is only ever called through a fully qualified path below.
 use instructions::admin::create_market::*;
 use instructions::admin::initialize_protocol::*;
+use instructions::borrow::accrue::*;
+use instructions::borrow::borrow::*;
+use instructions::borrow::repay::*;
 use instructions::collateral::deposit_collateral::*;
 use instructions::collateral::withdraw_collateral::*;
+use instructions::lend::supply::*;
+use instructions::lend::withdraw::*;
 use instructions::position::close_position::*;
 use instructions::position::init_position::*;
 
@@ -85,6 +90,37 @@ pub mod aegis {
     /// Closes an empty `Position` and returns its rent to `owner` (`instruction-catalogue.md` §20).
     pub fn close_position(ctx: Context<ClosePosition>) -> Result<()> {
         instructions::position::close_position::handler(ctx)
+    }
+
+    /// Deposits the loan asset, crediting the lender's own position with supply shares
+    /// (`instruction-catalogue.md` §12). Exactly one of `assets`/`shares` must be nonzero.
+    pub fn supply(ctx: Context<Supply>, assets: u64, shares: u128) -> Result<()> {
+        instructions::lend::supply::handler(ctx, assets, shares)
+    }
+
+    /// Redeems the lender's own supply shares, bounded by free liquidity
+    /// (`instruction-catalogue.md` §13).
+    pub fn withdraw(ctx: Context<Withdraw>, assets: u64, shares: u128) -> Result<()> {
+        instructions::lend::withdraw::handler(ctx, assets, shares)
+    }
+
+    /// **Hard-gated until Phase 5** — always returns `OracleNotYetAvailable`; no oracle account
+    /// exists yet to price collateral against debt (`instruction-catalogue.md` §14,
+    /// `docs/phase-roadmap.md` "Sequencing the oracle dependency").
+    pub fn borrow(ctx: Context<Borrow>, assets: u64, shares: u128) -> Result<()> {
+        instructions::borrow::borrow::handler(ctx, assets, shares)
+    }
+
+    /// Repays debt on any position. No owner signature, no oracle, unpausable
+    /// (`instruction-catalogue.md` §15, INV-ADM-04). Clamped to the position's actual debt.
+    pub fn repay(ctx: Context<Repay>, assets: u64, shares: u128) -> Result<()> {
+        instructions::borrow::repay::handler(ctx, assets, shares)
+    }
+
+    /// Standalone, permissionless interest accrual (`instruction-catalogue.md` §16). `dt == 0` is
+    /// a successful no-op.
+    pub fn accrue_interest(ctx: Context<AccrueInterest>) -> Result<()> {
+        instructions::borrow::accrue::handler(ctx)
     }
 }
 

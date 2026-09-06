@@ -9,7 +9,8 @@ use crate::constants::{
     MIN_CLOSE_FACTOR, MIN_CONF_BPS, MIN_PRICE_AGE_SECS,
 };
 use crate::error::AegisError;
-use aegis_math::{mul_div_floor, WAD};
+use crate::state::Position;
+use aegis_math::{borrow_rate, mul_div_floor, taylor3, taylor_x, to_shares_down, utilization, WAD};
 use anchor_lang::prelude::*;
 
 #[account]
@@ -162,6 +163,133 @@ impl Market {
         );
         Ok(())
     }
+
+    /// **Pure.** Computes the fully-accrued totals as of `now`, writing nothing
+    /// (`economic-model.md` §4.5, INV-ACC-08). `dt == 0` is a successful no-op: `interest` and
+    /// `fee_amount` are both `0` and every total is returned unchanged (E-02, `U-IRM-01`).
+    ///
+    /// This exists so a future caller (e.g. a Phase 5 `withdraw_collateral` solvency check) can
+    /// evaluate fully-accrued debt **without taking a write lock on `Market`** (NFR-7, ADR-0004) —
+    /// using accrued (larger) debt is strictly conservative for a solvency check. `accrue_mut`
+    /// below is the only place this crate is allowed to duplicate: everything else must call this
+    /// function rather than reimplement the formula (`docs/phases/phase-04-lending.md`).
+    pub fn accrue_view(&self, now: i64) -> Result<AccrueOutcome> {
+        let dt = now.saturating_sub(self.last_accrual_ts).max(0);
+        if dt == 0 {
+            return Ok(AccrueOutcome {
+                total_supply_assets: self.total_supply_assets,
+                total_borrow_assets: self.total_borrow_assets,
+                last_accrual_ts: self.last_accrual_ts,
+                interest: 0,
+                fee_amount: 0,
+            });
+        }
+        // `now > last_accrual_ts` here, so `dt` fits a u64 (i64 seconds since a real, bounded
+        // Unix timestamp) via a non-truncating narrowing (the value is already known to be a
+        // small, non-negative i64).
+        let dt_seconds = u64::try_from(dt).map_err(|_| AegisError::ArithmeticOverflow)?;
+
+        let u = utilization(self.total_borrow_assets, self.total_supply_assets)
+            .map_err(AegisError::from)?;
+        let r = borrow_rate(
+            u,
+            self.base_rate_ps,
+            self.slope1_ps,
+            self.slope2_ps,
+            self.u_kink,
+            self.max_rate_ps,
+        )
+        .map_err(AegisError::from)?;
+        let x = taylor_x(r, dt_seconds).map_err(AegisError::from)?;
+        let growth = taylor3(x).map_err(AegisError::from)?;
+
+        let interest_u128 = mul_div_floor(self.total_borrow_assets as u128, growth, WAD)
+            .map_err(AegisError::from)?;
+        let interest = u64::try_from(interest_u128).map_err(|_| AegisError::ArithmeticOverflow)?;
+
+        let total_borrow_assets = self
+            .total_borrow_assets
+            .checked_add(interest)
+            .ok_or(AegisError::ArithmeticOverflow)?;
+        let total_supply_assets = self
+            .total_supply_assets
+            .checked_add(interest)
+            .ok_or(AegisError::ArithmeticOverflow)?;
+
+        let fee_amount_u128 =
+            mul_div_floor(interest as u128, self.fee, WAD).map_err(AegisError::from)?;
+        let fee_amount =
+            u64::try_from(fee_amount_u128).map_err(|_| AegisError::ArithmeticOverflow)?;
+
+        Ok(AccrueOutcome {
+            total_supply_assets,
+            total_borrow_assets,
+            last_accrual_ts: now,
+            interest,
+            fee_amount,
+        })
+    }
+
+    /// Applies `accrue_view`'s result to `self` and, if a nonzero fee accrued, mints protocol fee
+    /// shares to `fee_position` (`economic-model.md` §4.3). **Never duplicates the financial
+    /// formulas independently of `accrue_view`** — `P-ACCRUE-1` proves the two agree.
+    ///
+    /// The fee shares are priced against `total_supply_assets - fee_amount` — the **pre-fee**
+    /// asset base — which is what makes the dilution exactly `fee_amount` of value and no more
+    /// (`P-FEE-1`). Pricing against the post-fee base would under-issue fee shares and silently
+    /// give lenders part of the protocol's fee.
+    ///
+    /// Returns the same `AccrueOutcome` plus the fee shares minted (`0` if no fee accrued), for
+    /// the `InterestAccrued` event.
+    pub fn accrue_mut(
+        &mut self,
+        fee_position: &mut Position,
+        now: i64,
+    ) -> Result<(AccrueOutcome, u128)> {
+        let outcome = self.accrue_view(now)?;
+
+        self.total_supply_assets = outcome.total_supply_assets;
+        self.total_borrow_assets = outcome.total_borrow_assets;
+        self.last_accrual_ts = outcome.last_accrual_ts;
+
+        let mut fee_shares = 0u128;
+        if outcome.fee_amount > 0 {
+            let pre_fee_supply_base = self
+                .total_supply_assets
+                .checked_sub(outcome.fee_amount)
+                .ok_or(AegisError::ArithmeticOverflow)?;
+            fee_shares = to_shares_down(
+                outcome.fee_amount,
+                pre_fee_supply_base,
+                self.total_supply_shares,
+            )
+            .map_err(AegisError::from)?;
+            self.total_supply_shares = self
+                .total_supply_shares
+                .checked_add(fee_shares)
+                .ok_or(AegisError::ArithmeticOverflow)?;
+            fee_position.supply_shares = fee_position
+                .supply_shares
+                .checked_add(fee_shares)
+                .ok_or(AegisError::ArithmeticOverflow)?;
+        }
+
+        Ok((outcome, fee_shares))
+    }
+}
+
+/// The result of `Market::accrue_view` — the fully-accrued totals as of a given timestamp, plus
+/// the interest and protocol-fee amounts that produced them. Never includes share counts: the
+/// only permitted divergence between `accrue_view` and `accrue_mut` is that the latter also mints
+/// fee shares, which affect `total_supply_shares` alone, never these fields (economic-model.md
+/// §4.5's INV-ACC-08 carve-out).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct AccrueOutcome {
+    pub total_supply_assets: u64,
+    pub total_borrow_assets: u64,
+    pub last_accrual_ts: i64,
+    pub interest: u64,
+    pub fee_amount: u64,
 }
 
 #[cfg(test)]
@@ -407,6 +535,244 @@ mod tests {
         assert_eq!(
             err,
             anchor_lang::error::Error::from(AegisError::InvalidMaxConfBps)
+        );
+    }
+
+    // --- Phase 4: accrual tests (accrue_view / accrue_mut) ---
+
+    fn test_market(
+        total_supply_assets: u64,
+        total_supply_shares: u128,
+        total_borrow_assets: u64,
+        total_borrow_shares: u128,
+        last_accrual_ts: i64,
+        fee: u128,
+    ) -> Market {
+        Market {
+            collateral_mint: Pubkey::default(),
+            loan_mint: Pubkey::default(),
+            collateral_token_program: Pubkey::default(),
+            loan_token_program: Pubkey::default(),
+            collateral_vault: Pubkey::default(),
+            loan_vault: Pubkey::default(),
+            fee_recipient: Pubkey::default(),
+            config_id: 0,
+            collateral_decimals: 9,
+            loan_decimals: 6,
+            oracle_kind: 0,
+            collateral_feed_id: [0u8; 32],
+            loan_feed_id: [0u8; 32],
+            max_price_age_secs: 60,
+            max_conf_bps: 100,
+            max_ltv: REF_MAX_LTV,
+            liq_threshold: REF_LT,
+            liq_bonus: REF_BONUS,
+            close_factor: REF_CLOSE_FACTOR,
+            full_liq_hf: REF_FULL_LIQ_HF,
+            liq_protocol_fee: REF_LIQ_PROTOCOL_FEE,
+            fee,
+            min_debt: REF_MIN_DEBT,
+            base_rate_ps: 0,
+            slope1_ps: 1_268_391_679,
+            slope2_ps: 31_709_791_983,
+            u_kink: 800_000_000_000_000_000,
+            max_rate_ps: 317_097_919_837,
+            total_supply_assets,
+            total_supply_shares,
+            total_borrow_assets,
+            total_borrow_shares,
+            collateral_fee_accrued: 0,
+            last_accrual_ts,
+            paused: 0,
+            flags: 0,
+            bump: 0,
+            collateral_vault_bump: 0,
+            loan_vault_bump: 0,
+            _reserved: [0u8; 64],
+        }
+    }
+
+    fn test_fee_position() -> Position {
+        Position {
+            market: Pubkey::default(),
+            owner: Pubkey::default(),
+            supply_shares: 0,
+            borrow_shares: 0,
+            collateral_amount: 0,
+            bump: 0,
+            _reserved: [0u8; 32],
+        }
+    }
+
+    // U-IRM-01 / E-02: dt == 0 must be a successful no-op -- no error, totals unchanged, no fee
+    // shares minted, last_accrual_ts unchanged.
+    #[test]
+    fn accrue_with_dt_zero_is_a_no_op() {
+        let market = test_market(
+            1_000_000_000,
+            1_000_000_000_000_000,
+            900_000_000,
+            900_000_000_000_000,
+            1_000,
+            REF_FEE,
+        );
+        let outcome = market.accrue_view(1_000).unwrap();
+        assert_eq!(outcome.total_supply_assets, market.total_supply_assets);
+        assert_eq!(outcome.total_borrow_assets, market.total_borrow_assets);
+        assert_eq!(outcome.last_accrual_ts, market.last_accrual_ts);
+        assert_eq!(outcome.interest, 0);
+        assert_eq!(outcome.fee_amount, 0);
+
+        let mut market_mut = market;
+        let mut fee_position = test_fee_position();
+        let (mut_outcome, fee_shares) = market_mut.accrue_mut(&mut fee_position, 1_000).unwrap();
+        assert_eq!(mut_outcome, outcome);
+        assert_eq!(fee_shares, 0, "dt == 0 must never mint fee shares");
+        assert_eq!(fee_position.supply_shares, 0);
+        assert_eq!(market_mut.total_supply_shares, 1_000_000_000_000_000);
+        assert_eq!(market_mut.last_accrual_ts, 1_000);
+    }
+
+    // U-IRM-03: the exact worked example from economic-model.md §4.4, wired through the real
+    // Market::accrue_view.
+    #[test]
+    fn accrue_view_matches_worked_example() {
+        let market = test_market(
+            1_000_000_000,
+            1_000_000_000_000_000_000,
+            900_000_000,
+            900_000_000_000_000_000,
+            0,
+            REF_FEE,
+        );
+        let outcome = market.accrue_view(86_400).unwrap();
+        assert_eq!(outcome.interest, 1_332_492);
+        assert_eq!(outcome.fee_amount, 133_249);
+        assert_eq!(outcome.total_borrow_assets, 901_332_492);
+        assert_eq!(outcome.total_supply_assets, 1_001_332_492);
+        assert_eq!(outcome.last_accrual_ts, 86_400);
+    }
+
+    // P-ACCRUE-1 / INV-ACC-08: accrue_view(s, now) totals == { accrue_mut(s', now); s'.totals },
+    // for equivalent starting state and time -- the only permitted divergence is fee shares, which
+    // do not appear in AccrueOutcome at all.
+    #[test]
+    fn p_accrue_1_view_and_mut_agree() {
+        let cases: [(u64, u128, u64, u128, i64, i64); 4] = [
+            (
+                1_000_000_000,
+                1_000_000_000_000_000_000,
+                900_000_000,
+                900_000_000_000_000_000,
+                0,
+                86_400,
+            ),
+            (0, 0, 0, 0, 0, 1_000),
+            (
+                5_000_000,
+                5_000_000_000_000,
+                5_000_000,
+                5_000_000_000_000,
+                100,
+                100,
+            ), // dt = 0
+            (
+                u64::MAX / 4,
+                1_000_000_000_000_000_000,
+                u64::MAX / 8,
+                500_000_000_000_000_000,
+                0,
+                31_536_000,
+            ),
+        ];
+        for (ta, ts, tb, tbs, last_ts, now) in cases {
+            let market = test_market(ta, ts, tb, tbs, last_ts, REF_FEE);
+            let view_outcome = market.accrue_view(now).unwrap();
+
+            let mut market_mut = market;
+            let mut fee_position = test_fee_position();
+            let (mut_outcome, _fee_shares) = market_mut.accrue_mut(&mut fee_position, now).unwrap();
+
+            assert_eq!(
+                view_outcome, mut_outcome,
+                "accrue_view and accrue_mut must agree exactly"
+            );
+            assert_eq!(
+                market_mut.total_supply_assets,
+                view_outcome.total_supply_assets
+            );
+            assert_eq!(
+                market_mut.total_borrow_assets,
+                view_outcome.total_borrow_assets
+            );
+            assert_eq!(market_mut.last_accrual_ts, view_outcome.last_accrual_ts);
+        }
+    }
+
+    // P-ACCRUE-2 / INV-ACC-04: total_supply_assets - total_borrow_assets is invariant under
+    // accrual (interest is a pure transfer of claim from borrowers to lenders; no token moves).
+    #[test]
+    fn p_accrue_2_free_liquidity_invariant_under_accrual() {
+        let mut market = test_market(
+            1_000_000_000,
+            1_000_000_000_000_000_000,
+            900_000_000,
+            900_000_000_000_000_000,
+            0,
+            REF_FEE,
+        );
+        let free_liquidity_before = market.total_supply_assets - market.total_borrow_assets;
+        let mut fee_position = test_fee_position();
+        market.accrue_mut(&mut fee_position, 86_400).unwrap();
+        let free_liquidity_after = market.total_supply_assets - market.total_borrow_assets;
+        assert_eq!(free_liquidity_before, free_liquidity_after);
+    }
+
+    // P-FEE-1: fee shares dilute lenders by exactly fee_amount (+-1 unit) -- after accrual, the
+    // fee recipient's claimable assets increase by exactly fee_amount, and total claimable assets
+    // (which is what every OTHER lender's aggregate claim is measured against) grows by exactly
+    // interest - fee_amount in aggregate once the fee recipient's own share is excluded.
+    #[test]
+    fn p_fee_1_fee_shares_dilute_by_exactly_fee_amount() {
+        let mut market = test_market(
+            1_000_000_000,
+            1_000_000_000_000_000_000,
+            900_000_000,
+            900_000_000_000_000_000,
+            0,
+            REF_FEE,
+        );
+        let mut fee_position = test_fee_position();
+        let (outcome, fee_shares) = market.accrue_mut(&mut fee_position, 86_400).unwrap();
+        assert!(fee_shares > 0, "fixture must actually accrue a nonzero fee");
+
+        let fee_recipient_claim = aegis_math::to_assets_down(
+            fee_position.supply_shares,
+            market.total_supply_assets,
+            market.total_supply_shares,
+        )
+        .unwrap();
+        let diff = fee_recipient_claim as i128 - outcome.fee_amount as i128;
+        assert!(
+            diff.unsigned_abs() <= 1,
+            "fee recipient's claim ({fee_recipient_claim}) must equal fee_amount ({}) within 1 unit of rounding",
+            outcome.fee_amount
+        );
+
+        // The denominator used to price fee shares must be the PRE-fee base
+        // (total_supply_assets - fee_amount), not the post-fee total -- proven by checking that
+        // pricing against the WRONG (post-fee) denominator would have produced strictly fewer
+        // shares (under-dilution, silently gifting lenders part of the fee).
+        let wrong_denominator_shares = aegis_math::to_shares_down(
+            outcome.fee_amount,
+            outcome.total_supply_assets, // the bug: post-fee base
+            market.total_supply_shares - fee_shares, // pre-mint share total
+        )
+        .unwrap();
+        assert!(
+            fee_shares >= wrong_denominator_shares,
+            "fee shares priced against the correct pre-fee base must be >= what the wrong \
+             (post-fee) denominator would have produced"
         );
     }
 }

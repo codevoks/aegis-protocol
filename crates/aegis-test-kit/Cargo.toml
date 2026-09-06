@@ -11,6 +11,7 @@ license = "Apache-2.0"
 # Test code depending on product code is the one allowed direction (architecture.md §3: "No
 # module imports aegis-test-kit" — never the reverse).
 aegis = { path = "../../programs/aegis" }
+aegis-math = { path = "../aegis-math" }
 anchor-lang = "1.2.0"
 anchor-spl = { version = "1.2.0", default-features = false, features = ["token", "token_2022", "token_2022_extensions"] }
 litesvm = "0.16"
@@ -30,3 +31,6 @@ spl-token-2022-interface = "2"
 solana-instruction-error = "2"
 solana-transaction-error = "3"
 solana-program-pack = "3"
+# Same major line litesvm 0.16.0 itself resolves (`~3.1.1`) -- used by the Phase 4 demo to warp
+# the sysvar Clock without any real wall-clock waiting.
+solana-clock = "3"

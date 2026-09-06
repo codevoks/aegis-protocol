@@ -28,7 +28,9 @@ pub enum AegisError {
     #[msg("This operation requires oracle-backed valuation, which does not exist before Phase 5")]
     OracleNotYetAvailable = 40,
 
-    // ---- 6060-6079: Solvency / health ---- (unused before Phase 4; band reserved)
+    // ---- 6060-6079: Solvency / health ----
+    #[msg("Position debt after this operation must be exactly zero or at least market.min_debt")]
+    DebtBelowMinimum = 60,
 
     // ---- 6080-6099: Liquidation ----
     #[msg("liq_threshold * (WAD + liq_bonus) / WAD must be strictly less than WAD (INV-LIQ-06)")]
@@ -57,6 +59,12 @@ pub enum AegisError {
     ZeroAmount,
     #[msg("amount exceeds position.collateral_amount")]
     InsufficientCollateral,
+    #[msg("exactly one of assets/shares must be nonzero, not both")]
+    InconsistentInput,
+    #[msg("requested assets exceed the market's free liquidity (total_supply_assets - total_borrow_assets)")]
+    InsufficientLiquidity,
+    #[msg("requested shares exceed the position's available share balance")]
+    InsufficientShares,
 
     // ---- 6120-6139: Configuration / bounds ----
     #[msg("guardian and fee_recipient must not be the default Pubkey")]

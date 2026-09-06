@@ -9,7 +9,11 @@
 
 pub mod constants;
 pub mod fixed;
+pub mod irm;
+pub mod shares;
 mod u256;
 
 pub use constants::{SECONDS_PER_YEAR, VIRTUAL_ASSETS, VIRTUAL_SHARES, WAD};
 pub use fixed::{mul_div_ceil, mul_div_floor, MathError};
+pub use irm::{borrow_rate, taylor3, taylor_x, utilization};
+pub use shares::{to_assets_down, to_assets_up, to_shares_down, to_shares_up};

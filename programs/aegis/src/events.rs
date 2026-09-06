@@ -92,3 +92,59 @@ pub struct PositionClosed {
     pub position: Pubkey,
     pub owner: Pubkey,
 }
+
+/// `assets_in` is the requested/computed transfer amount; `credited` is the measured post-CPI
+/// delta actually recorded (`account-model.md` §6.4) — loan assets are policy-restricted to
+/// fee-free mints, so the two are expected to be equal, but this is verified, never assumed
+/// (`instruction-catalogue.md` §12).
+#[event]
+pub struct Supplied {
+    pub market: Pubkey,
+    pub position: Pubkey,
+    pub owner: Pubkey,
+    pub assets_in: u64,
+    pub credited: u64,
+    pub shares_minted: u128,
+}
+
+#[event]
+pub struct Withdrawn {
+    pub market: Pubkey,
+    pub position: Pubkey,
+    pub owner: Pubkey,
+    pub assets_out: u64,
+    pub shares_burned: u128,
+}
+
+/// Defined for API completeness against `instruction-catalogue.md`'s event catalogue; never
+/// emitted by Phase 4's `borrow` handler, which is hard-gated to always fail before any state
+/// transition (`docs/phases/phase-04-lending.md` #17: "Do not emit `Borrowed` for the hard-gated
+/// unsuccessful borrow path").
+#[event]
+pub struct Borrowed {
+    pub market: Pubkey,
+    pub position: Pubkey,
+    pub owner: Pubkey,
+    pub assets_out: u64,
+    pub shares_minted: u128,
+}
+
+#[event]
+pub struct Repaid {
+    pub market: Pubkey,
+    pub position: Pubkey,
+    pub payer: Pubkey,
+    pub assets_in: u64,
+    pub credited: u64,
+    pub shares_burned: u128,
+}
+
+#[event]
+pub struct InterestAccrued {
+    pub market: Pubkey,
+    pub interest: u64,
+    pub fee_amount: u64,
+    pub fee_shares: u128,
+    pub total_borrow_assets: u64,
+    pub total_supply_assets: u64,
+}

@@ -35,10 +35,12 @@ name = "aegis-test-kit"
 version = "0.1.0"
 dependencies = [
  "aegis",
+ "aegis-math",
  "anchor-lang",
  "anchor-spl",
  "litesvm",
  "solana-account",
+ "solana-clock",
  "solana-instruction",
  "solana-instruction-error",
  "solana-keypair",
@@ -59,10 +61,12 @@ name = "aegis-workspace"
 version = "0.1.0"
 dependencies = [
  "aegis",
+ "aegis-math",
  "aegis-test-kit",
  "anchor-lang",
  "litesvm",
  "solana-account",
+ "solana-clock",
  "solana-instruction",
  "solana-instruction-error",
  "solana-keypair",

@@ -379,6 +379,275 @@ pub fn close_position(
     send(svm, owner, &[], ix)
 }
 
+// --- supply ---
+
+#[allow(clippy::too_many_arguments)]
+pub fn supply_ix(
+    owner: &Pubkey,
+    market: Pubkey,
+    position: Pubkey,
+    fee_position: Pubkey,
+    loan_vault: Pubkey,
+    owner_loan_ata: Pubkey,
+    loan_mint: Pubkey,
+    loan_token_program: Pubkey,
+    assets: u64,
+    shares: u128,
+) -> Instruction {
+    Instruction {
+        program_id: aegis::ID,
+        accounts: aegis::accounts::Supply {
+            owner: *owner,
+            market,
+            position,
+            fee_position,
+            loan_vault,
+            owner_loan_ata,
+            loan_mint,
+            loan_token_program,
+        }
+        .to_account_metas(None),
+        data: aegis::instruction::Supply { assets, shares }.data(),
+    }
+}
+
+#[allow(clippy::too_many_arguments)]
+pub fn supply(
+    svm: &mut LiteSVM,
+    owner: &Keypair,
+    market: Pubkey,
+    position: Pubkey,
+    fee_position: Pubkey,
+    loan_vault: Pubkey,
+    owner_loan_ata: Pubkey,
+    loan_mint: Pubkey,
+    loan_token_program: Pubkey,
+    assets: u64,
+    shares: u128,
+) -> TransactionResult {
+    let ix = supply_ix(
+        &owner.pubkey(),
+        market,
+        position,
+        fee_position,
+        loan_vault,
+        owner_loan_ata,
+        loan_mint,
+        loan_token_program,
+        assets,
+        shares,
+    );
+    send(svm, owner, &[], ix)
+}
+
+// --- withdraw ---
+
+#[allow(clippy::too_many_arguments)]
+pub fn withdraw_ix(
+    owner: &Pubkey,
+    market: Pubkey,
+    position: Pubkey,
+    fee_position: Pubkey,
+    loan_vault: Pubkey,
+    owner_loan_ata: Pubkey,
+    loan_mint: Pubkey,
+    loan_token_program: Pubkey,
+    assets: u64,
+    shares: u128,
+) -> Instruction {
+    Instruction {
+        program_id: aegis::ID,
+        accounts: aegis::accounts::Withdraw {
+            owner: *owner,
+            market,
+            position,
+            fee_position,
+            loan_vault,
+            owner_loan_ata,
+            loan_mint,
+            loan_token_program,
+        }
+        .to_account_metas(None),
+        data: aegis::instruction::Withdraw { assets, shares }.data(),
+    }
+}
+
+#[allow(clippy::too_many_arguments)]
+pub fn withdraw(
+    svm: &mut LiteSVM,
+    owner: &Keypair,
+    market: Pubkey,
+    position: Pubkey,
+    fee_position: Pubkey,
+    loan_vault: Pubkey,
+    owner_loan_ata: Pubkey,
+    loan_mint: Pubkey,
+    loan_token_program: Pubkey,
+    assets: u64,
+    shares: u128,
+) -> TransactionResult {
+    let ix = withdraw_ix(
+        &owner.pubkey(),
+        market,
+        position,
+        fee_position,
+        loan_vault,
+        owner_loan_ata,
+        loan_mint,
+        loan_token_program,
+        assets,
+        shares,
+    );
+    send(svm, owner, &[], ix)
+}
+
+// --- borrow (hard-gated: always fails with OracleNotYetAvailable in Phase 4) ---
+
+#[allow(clippy::too_many_arguments)]
+pub fn borrow_ix(
+    owner: &Pubkey,
+    market: Pubkey,
+    position: Pubkey,
+    fee_position: Pubkey,
+    loan_vault: Pubkey,
+    owner_loan_ata: Pubkey,
+    loan_mint: Pubkey,
+    loan_token_program: Pubkey,
+    assets: u64,
+    shares: u128,
+) -> Instruction {
+    Instruction {
+        program_id: aegis::ID,
+        accounts: aegis::accounts::Borrow {
+            owner: *owner,
+            market,
+            position,
+            fee_position,
+            loan_vault,
+            owner_loan_ata,
+            loan_mint,
+            loan_token_program,
+        }
+        .to_account_metas(None),
+        data: aegis::instruction::Borrow { assets, shares }.data(),
+    }
+}
+
+#[allow(clippy::too_many_arguments)]
+pub fn borrow(
+    svm: &mut LiteSVM,
+    owner: &Keypair,
+    market: Pubkey,
+    position: Pubkey,
+    fee_position: Pubkey,
+    loan_vault: Pubkey,
+    owner_loan_ata: Pubkey,
+    loan_mint: Pubkey,
+    loan_token_program: Pubkey,
+    assets: u64,
+    shares: u128,
+) -> TransactionResult {
+    let ix = borrow_ix(
+        &owner.pubkey(),
+        market,
+        position,
+        fee_position,
+        loan_vault,
+        owner_loan_ata,
+        loan_mint,
+        loan_token_program,
+        assets,
+        shares,
+    );
+    send(svm, owner, &[], ix)
+}
+
+// --- repay ---
+
+#[allow(clippy::too_many_arguments)]
+pub fn repay_ix(
+    payer: &Pubkey,
+    market: Pubkey,
+    position: Pubkey,
+    fee_position: Pubkey,
+    loan_vault: Pubkey,
+    payer_loan_ata: Pubkey,
+    loan_mint: Pubkey,
+    loan_token_program: Pubkey,
+    assets: u64,
+    shares: u128,
+) -> Instruction {
+    Instruction {
+        program_id: aegis::ID,
+        accounts: aegis::accounts::Repay {
+            payer: *payer,
+            market,
+            position,
+            fee_position,
+            loan_vault,
+            payer_loan_ata,
+            loan_mint,
+            loan_token_program,
+        }
+        .to_account_metas(None),
+        data: aegis::instruction::Repay { assets, shares }.data(),
+    }
+}
+
+#[allow(clippy::too_many_arguments)]
+pub fn repay(
+    svm: &mut LiteSVM,
+    payer: &Keypair,
+    market: Pubkey,
+    position: Pubkey,
+    fee_position: Pubkey,
+    loan_vault: Pubkey,
+    payer_loan_ata: Pubkey,
+    loan_mint: Pubkey,
+    loan_token_program: Pubkey,
+    assets: u64,
+    shares: u128,
+) -> TransactionResult {
+    let ix = repay_ix(
+        &payer.pubkey(),
+        market,
+        position,
+        fee_position,
+        loan_vault,
+        payer_loan_ata,
+        loan_mint,
+        loan_token_program,
+        assets,
+        shares,
+    );
+    send(svm, payer, &[], ix)
+}
+
+// --- accrue_interest ---
+
+pub fn accrue_interest_ix(market: Pubkey, fee_position: Pubkey) -> Instruction {
+    Instruction {
+        program_id: aegis::ID,
+        accounts: aegis::accounts::AccrueInterest {
+            market,
+            fee_position,
+        }
+        .to_account_metas(None),
+        data: aegis::instruction::AccrueInterest {}.data(),
+    }
+}
+
+/// Permissionless: any funded keypair can pay for and submit this transaction.
+pub fn accrue_interest(
+    svm: &mut LiteSVM,
+    payer: &Keypair,
+    market: Pubkey,
+    fee_position: Pubkey,
+) -> TransactionResult {
+    let ix = accrue_interest_ix(market, fee_position);
+    send(svm, payer, &[], ix)
+}
+
 // --- account fetch/decode ---
 
 pub fn fetch_protocol(svm: &LiteSVM, protocol: &Pubkey) -> Protocol {

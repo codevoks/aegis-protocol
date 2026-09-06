@@ -21,6 +21,7 @@ rust-version = "1.85.0"
 
 [dev-dependencies]
 aegis = { path = "programs/aegis" }
+aegis-math = { path = "crates/aegis-math" }
 aegis-test-kit = { path = "crates/aegis-test-kit" }
 anchor-lang = "1.2.0"
 litesvm = "0.16"
@@ -35,6 +36,11 @@ solana-account = "4"
 solana-instruction = "3"
 solana-instruction-error = "2"
 solana-transaction-error = "3"
+# Same major line litesvm 0.16.0 itself resolves (`~3.1.1`, verified via its own Cargo.toml) --
+# used only in tests, to warp the sysvar Clock forward without any real wall-clock waiting
+# (docs/phases/phase-04-lending.md "One-year dormant market test": "Do not use real wall-clock
+# waiting").
+solana-clock = "3"
 
 # overflow-checks = true is the single most important line in this file (T-16). Release
 # builds do not check arithmetic overflow by default; without this, the entire arithmetic

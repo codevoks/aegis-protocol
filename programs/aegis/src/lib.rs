@@ -1,9 +1,11 @@
 //! Aegis Protocol on-chain program.
 //!
-//! Phase 2 scope: the protocol's persistent state and custody boundaries —
-//! `Protocol`/`Market`/`Position`, both custody vaults, and the Token-2022 extension policy
-//! engine. No lending behavior yet (no deposits, withdrawals, supply, borrow, repay, interest,
-//! oracle, or liquidation) — see `docs/phases/phase-02-state.md`.
+//! Phase 3 scope adds real collateral custody flows on top of Phase 2's state and vaults:
+//! `deposit_collateral` (no oracle, no pause, `Market` read-only, measured-delta accounting),
+//! `withdraw_collateral` (zero-debt path only — any position with `borrow_shares > 0` is refused
+//! with `OracleNotYetAvailable`, a hard sequencing gate rather than a bypass), and
+//! `close_position`. Still no supply, borrow, repay, interest, oracle, or liquidation — see
+//! `docs/phases/phase-03-collateral.md`.
 //!
 //! `lib.rs` contains no logic beyond wiring instruction entry points to their handlers
 //! (architecture.md §2): validate accounts → read state → call math → write state → move tokens
@@ -32,6 +34,9 @@ pub mod token;
 // public re-export; it is only ever called through a fully qualified path below.
 use instructions::admin::create_market::*;
 use instructions::admin::initialize_protocol::*;
+use instructions::collateral::deposit_collateral::*;
+use instructions::collateral::withdraw_collateral::*;
+use instructions::position::close_position::*;
 use instructions::position::init_position::*;
 
 declare_id!("2GtoBADM175vkjf5UYpbD198Ry1cJadXMGo8sCQvXndh");
@@ -62,6 +67,24 @@ pub mod aegis {
     /// Creates an empty `Position` for `(market, owner)` (`instruction-catalogue.md` §9).
     pub fn init_position(ctx: Context<InitPosition>) -> Result<()> {
         instructions::position::init_position::handler(ctx)
+    }
+
+    /// Deposits collateral into a position by measured delta; no oracle, no pause check, and
+    /// `Market` is never written (`instruction-catalogue.md` §10).
+    pub fn deposit_collateral(ctx: Context<DepositCollateral>, amount: u64) -> Result<()> {
+        instructions::collateral::deposit_collateral::handler(ctx, amount)
+    }
+
+    /// Withdraws collateral for the zero-debt path only; a position with outstanding
+    /// `borrow_shares` is refused with `OracleNotYetAvailable` (`instruction-catalogue.md` §11,
+    /// `docs/phase-roadmap.md` "Sequencing the oracle dependency").
+    pub fn withdraw_collateral(ctx: Context<WithdrawCollateral>, amount: u64) -> Result<()> {
+        instructions::collateral::withdraw_collateral::handler(ctx, amount)
+    }
+
+    /// Closes an empty `Position` and returns its rent to `owner` (`instruction-catalogue.md` §20).
+    pub fn close_position(ctx: Context<ClosePosition>) -> Result<()> {
+        instructions::position::close_position::handler(ctx)
     }
 }
 

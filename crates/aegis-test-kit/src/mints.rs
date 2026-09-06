@@ -95,7 +95,7 @@ fn init_instruction(
     .expect("valid extension-init instruction")
 }
 
-fn send(
+pub(crate) fn send(
     svm: &mut LiteSVM,
     payer: &Keypair,
     extra_signers: &[&Keypair],

@@ -65,3 +65,30 @@ pub struct PositionInitialized {
     pub position: Pubkey,
     pub owner: Pubkey,
 }
+
+/// `amount_in` is the requested transfer amount; `credited` is the measured post-CPI delta
+/// actually recorded against `position.collateral_amount` (`account-model.md` §6.4). The two
+/// differ exactly when the collateral mint charges a Token-2022 transfer fee.
+#[event]
+pub struct CollateralDeposited {
+    pub market: Pubkey,
+    pub position: Pubkey,
+    pub depositor: Pubkey,
+    pub amount_in: u64,
+    pub credited: u64,
+}
+
+#[event]
+pub struct CollateralWithdrawn {
+    pub market: Pubkey,
+    pub position: Pubkey,
+    pub owner: Pubkey,
+    pub amount: u64,
+}
+
+#[event]
+pub struct PositionClosed {
+    pub market: Pubkey,
+    pub position: Pubkey,
+    pub owner: Pubkey,
+}

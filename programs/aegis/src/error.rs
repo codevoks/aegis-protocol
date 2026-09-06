@@ -13,6 +13,10 @@ pub enum AegisError {
     // ---- 6000-6019: Authorization / account validation ----
     #[msg("Signer does not match protocol.admin")]
     NotProtocolAdmin = 0,
+    #[msg("Signer does not match position.owner")]
+    NotPositionOwner,
+    #[msg("Position does not belong to the supplied market")]
+    PositionMarketMismatch,
 
     // ---- 6020-6039: Arithmetic / rounding ----
     #[msg("Arithmetic overflow")]
@@ -20,7 +24,9 @@ pub enum AegisError {
     #[msg("Division by zero")]
     DivisionByZero,
 
-    // ---- 6040-6059: Oracle ---- (unused before Phase 5; band reserved)
+    // ---- 6040-6059: Oracle ----
+    #[msg("This operation requires oracle-backed valuation, which does not exist before Phase 5")]
+    OracleNotYetAvailable = 40,
 
     // ---- 6060-6079: Solvency / health ---- (unused before Phase 4; band reserved)
 
@@ -39,6 +45,18 @@ pub enum AegisError {
     FreezeAuthorityNotAcknowledged,
     #[msg("Mint account data could not be parsed as a Token or Token-2022 mint")]
     InvalidMintAccountData,
+    #[msg("Mint account does not match the market's pinned mint for this asset")]
+    VaultMintMismatch,
+    #[msg("Token account does not match the market's canonical vault for this asset")]
+    VaultMismatch,
+    #[msg("Token program does not match the market's pinned token program for this asset")]
+    TokenProgramMismatch,
+    #[msg("Measured post-CPI vault balance decreased instead of increasing")]
+    VaultAccountingError,
+    #[msg("amount must be greater than zero")]
+    ZeroAmount,
+    #[msg("amount exceeds position.collateral_amount")]
+    InsufficientCollateral,
 
     // ---- 6120-6139: Configuration / bounds ----
     #[msg("guardian and fee_recipient must not be the default Pubkey")]
@@ -69,6 +87,8 @@ pub enum AegisError {
     // ---- 6140-6159: Lifecycle / state ----
     #[msg("position owner must not be the default Pubkey")]
     InvalidPositionOwner = 140,
+    #[msg("close_position requires supply_shares, borrow_shares and collateral_amount to be exactly zero")]
+    PositionNotEmpty,
 }
 
 impl From<aegis_math::MathError> for AegisError {

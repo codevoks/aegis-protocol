@@ -246,6 +246,139 @@ pub fn init_position(
     (send(svm, payer, &[], ix), position)
 }
 
+// --- deposit_collateral ---
+
+#[allow(clippy::too_many_arguments)]
+pub fn deposit_collateral_ix(
+    depositor: &Pubkey,
+    market: Pubkey,
+    position: Pubkey,
+    collateral_vault: Pubkey,
+    depositor_collateral_ata: Pubkey,
+    collateral_mint: Pubkey,
+    collateral_token_program: Pubkey,
+    amount: u64,
+) -> Instruction {
+    Instruction {
+        program_id: aegis::ID,
+        accounts: aegis::accounts::DepositCollateral {
+            depositor: *depositor,
+            market,
+            position,
+            collateral_vault,
+            depositor_collateral_ata,
+            collateral_mint,
+            collateral_token_program,
+        }
+        .to_account_metas(None),
+        data: aegis::instruction::DepositCollateral { amount }.data(),
+    }
+}
+
+#[allow(clippy::too_many_arguments)]
+pub fn deposit_collateral(
+    svm: &mut LiteSVM,
+    depositor: &Keypair,
+    market: Pubkey,
+    position: Pubkey,
+    collateral_vault: Pubkey,
+    depositor_collateral_ata: Pubkey,
+    collateral_mint: Pubkey,
+    collateral_token_program: Pubkey,
+    amount: u64,
+) -> TransactionResult {
+    let ix = deposit_collateral_ix(
+        &depositor.pubkey(),
+        market,
+        position,
+        collateral_vault,
+        depositor_collateral_ata,
+        collateral_mint,
+        collateral_token_program,
+        amount,
+    );
+    send(svm, depositor, &[], ix)
+}
+
+// --- withdraw_collateral ---
+
+#[allow(clippy::too_many_arguments)]
+pub fn withdraw_collateral_ix(
+    owner: &Pubkey,
+    market: Pubkey,
+    position: Pubkey,
+    collateral_vault: Pubkey,
+    owner_collateral_ata: Pubkey,
+    collateral_mint: Pubkey,
+    collateral_token_program: Pubkey,
+    amount: u64,
+) -> Instruction {
+    Instruction {
+        program_id: aegis::ID,
+        accounts: aegis::accounts::WithdrawCollateral {
+            owner: *owner,
+            market,
+            position,
+            collateral_vault,
+            owner_collateral_ata,
+            collateral_mint,
+            collateral_token_program,
+        }
+        .to_account_metas(None),
+        data: aegis::instruction::WithdrawCollateral { amount }.data(),
+    }
+}
+
+#[allow(clippy::too_many_arguments)]
+pub fn withdraw_collateral(
+    svm: &mut LiteSVM,
+    owner: &Keypair,
+    market: Pubkey,
+    position: Pubkey,
+    collateral_vault: Pubkey,
+    owner_collateral_ata: Pubkey,
+    collateral_mint: Pubkey,
+    collateral_token_program: Pubkey,
+    amount: u64,
+) -> TransactionResult {
+    let ix = withdraw_collateral_ix(
+        &owner.pubkey(),
+        market,
+        position,
+        collateral_vault,
+        owner_collateral_ata,
+        collateral_mint,
+        collateral_token_program,
+        amount,
+    );
+    send(svm, owner, &[], ix)
+}
+
+// --- close_position ---
+
+pub fn close_position_ix(owner: &Pubkey, market: Pubkey, position: Pubkey) -> Instruction {
+    Instruction {
+        program_id: aegis::ID,
+        accounts: aegis::accounts::ClosePosition {
+            owner: *owner,
+            market,
+            position,
+        }
+        .to_account_metas(None),
+        data: aegis::instruction::ClosePosition {}.data(),
+    }
+}
+
+pub fn close_position(
+    svm: &mut LiteSVM,
+    owner: &Keypair,
+    market: Pubkey,
+    position: Pubkey,
+) -> TransactionResult {
+    let ix = close_position_ix(&owner.pubkey(), market, position);
+    send(svm, owner, &[], ix)
+}
+
 // --- account fetch/decode ---
 
 pub fn fetch_protocol(svm: &LiteSVM, protocol: &Pubkey) -> Protocol {

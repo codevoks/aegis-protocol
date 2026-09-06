@@ -7,9 +7,26 @@ description = "Local, offline LiteSVM test fixtures for Aegis Protocol"
 license = "Apache-2.0"
 
 [dependencies]
+# The program under test: test-kit builds real instructions against it and decodes its accounts.
+# Test code depending on product code is the one allowed direction (architecture.md §3: "No
+# module imports aegis-test-kit" — never the reverse).
+aegis = { path = "../../programs/aegis" }
+anchor-lang = "1.2.0"
+anchor-spl = { version = "1.2.0", default-features = false, features = ["token", "token_2022", "token_2022_extensions"] }
 litesvm = "0.16"
 solana-keypair = "3"
 # 4.x re-exports `Pubkey` as a plain alias of `solana_address::Address` (the type litesvm's
 # public API now uses directly), so this must track litesvm's own major line, not "3".
 solana-pubkey = "4"
 solana-signer = "3"
+solana-instruction = "3"
+solana-message = "4"
+solana-transaction = { version = "4", features = ["wincode"] }
+solana-account = "4"
+solana-system-interface = "3"
+solana-program-option = "3"
+spl-token-interface = "2"
+spl-token-2022-interface = "2"
+solana-instruction-error = "2"
+solana-transaction-error = "3"
+solana-program-pack = "3"

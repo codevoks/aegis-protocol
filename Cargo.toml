@@ -30,6 +30,11 @@ solana-message = "4"
 solana-transaction = { version = "4", features = ["wincode"] }
 solana-signer = "3"
 solana-keypair = "3"
+solana-pubkey = "4"
+solana-account = "4"
+solana-instruction = "3"
+solana-instruction-error = "2"
+solana-transaction-error = "3"
 
 # overflow-checks = true is the single most important line in this file (T-16). Release
 # builds do not check arithmetic overflow by default; without this, the entire arithmetic

@@ -42,13 +42,15 @@ fuzz:
 bench:
 	@echo "not implemented until Phase 11 (performance)"
 
-## Phase 3 demo: SPL and Token-2022 transfer-fee collateral deposits (requested vs. credited),
-## the INV-CUS-02 custody invariant after every step, a zero-debt withdrawal, and closing a
-## position with rent reclaimed — see docs/phases/phase-03-collateral.md "Demo". Zero-cost,
-## offline, in-process LiteSVM. Phase 2's own demo (protocol/market/position/custody scaffolding)
-## remains runnable directly: `cargo run -p aegis-test-kit --example phase2_demo`.
+## Phase 4 demo: lender supplies, borrow is correctly refused (OracleNotYetAvailable), debt is
+## seeded via TEST-KIT state injection, 30 days are warped, interest accrues, utilization/borrow
+## APY/supply APY are printed, protocol fee shares accrue, and the lender withdraws principal plus
+## interest — see docs/phases/phase-04-lending.md "Demo". Zero-cost, offline, in-process LiteSVM.
+## Earlier phase demos remain runnable directly:
+## `cargo run -p aegis-test-kit --example phase2_demo`
+## `cargo run -p aegis-test-kit --example phase3_demo`
 demo: build
-	cargo run -p aegis-test-kit --example phase3_demo
+	cargo run -p aegis-test-kit --example phase4_demo
 
 ## UI against local Surfpool — Phase 9.
 app:

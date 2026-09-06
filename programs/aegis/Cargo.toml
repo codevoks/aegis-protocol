@@ -29,6 +29,13 @@ anchor-lang = "1.2.0"
 # §5.1); token_2022 extension parsing is needed by token/policy.rs for the positive allowlist.
 anchor-spl = { version = "1.2.0", default-features = false, features = ["token", "token_2022", "token_2022_extensions"] }
 aegis-math = { path = "../../crates/aegis-math" }
+# The official Pyth SDK for reading pull-oracle PriceUpdateV2 accounts (docs/oracle-design.md,
+# ADR-0008, docs/phases/phase-05-oracle.md). Required, not optional: the frozen oracle
+# architecture is "a real Pyth adapter" against the actual account layout, never a hand-rolled
+# reimplementation of it. Version and anchor-lang compatibility verified directly from crates.io
+# and the crate's own source (docs/ecosystem-research.md RV-3/RV-4) -- maintained by Pyth Data
+# Association, `anchor-lang = "^1.0.2"` is satisfied by this workspace's anchor-lang 1.2.0.
+pyth-solana-receiver-sdk = "2.0.0"
 
 [lints.rust]
 unexpected_cfgs = { level = "warn", check-cfg = ['cfg(target_os, values("solana"))'] }

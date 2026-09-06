@@ -24,9 +24,31 @@ pub enum AegisError {
     #[msg("Division by zero")]
     DivisionByZero,
 
-    // ---- 6040-6059: Oracle ----
-    #[msg("This operation requires oracle-backed valuation, which does not exist before Phase 5")]
-    OracleNotYetAvailable = 40,
+    // ---- 6040-6059: Oracle (docs/oracle-design.md §2, checks O-1..O-11) ----
+    #[msg("market.oracle_kind is not a recognized oracle kind")]
+    OracleUnsupportedKind = 40,
+    #[msg("O-1: price-update account is not owned by the Pyth receiver program")]
+    OracleAccountOwnerMismatch,
+    #[msg("O-2: price-update account failed to deserialize as a PriceUpdateV2")]
+    OracleAccountInvalidData,
+    #[msg("O-3: price-update account's feed_id does not match the market's configured feed")]
+    OracleFeedMismatch,
+    #[msg("O-4: price update is not fully verified (VerificationLevel::Full required)")]
+    OracleVerificationLevelNotFull,
+    #[msg("O-5: price update is older than market.max_price_age_secs")]
+    OraclePriceStale,
+    #[msg("O-6: price update's publish_time is unacceptably far in the future")]
+    OraclePriceInFuture,
+    #[msg("O-11: the collateral and loan price-update accounts must be distinct")]
+    OracleDuplicatePriceAccounts,
+    #[msg("O-7: oracle price is zero or negative")]
+    OraclePriceNotPositive,
+    #[msg("O-8: oracle confidence interval exceeds market.max_conf_bps")]
+    OracleConfidenceTooWide,
+    #[msg("O-9: confidence-adjusted price falls outside [MIN_PRICE_WAD, MAX_PRICE_WAD]")]
+    OraclePriceOutOfBounds,
+    #[msg("debt_value exceeds collateral_value * max_ltv / WAD after this operation")]
+    ExceedsMaxLtv,
 
     // ---- 6060-6079: Solvency / health ----
     #[msg("Position debt after this operation must be exactly zero or at least market.min_debt")]
@@ -104,6 +126,18 @@ impl From<aegis_math::MathError> for AegisError {
         match err {
             aegis_math::MathError::Overflow => AegisError::ArithmeticOverflow,
             aegis_math::MathError::DivisionByZero => AegisError::DivisionByZero,
+        }
+    }
+}
+
+impl From<aegis_math::HealthError> for AegisError {
+    fn from(err: aegis_math::HealthError) -> Self {
+        match err {
+            aegis_math::HealthError::Overflow => AegisError::ArithmeticOverflow,
+            aegis_math::HealthError::DivisionByZero => AegisError::DivisionByZero,
+            aegis_math::HealthError::PriceNotPositive => AegisError::OraclePriceNotPositive,
+            aegis_math::HealthError::ConfidenceTooWide => AegisError::OracleConfidenceTooWide,
+            aegis_math::HealthError::PriceOutOfBounds => AegisError::OraclePriceOutOfBounds,
         }
     }
 }

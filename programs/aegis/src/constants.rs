@@ -46,3 +46,8 @@ pub const MIN_PRICE_AGE_SECS: u32 = 1;
 pub const MAX_PRICE_AGE_SECS: u32 = 3600;
 pub const MIN_CONF_BPS: u16 = 1;
 pub const MAX_CONF_BPS: u16 = 2000;
+
+/// O-6 (`oracle-design.md` §2): a Pyth price whose `publish_time` is more than this many seconds
+/// ahead of the runtime clock is rejected outright, regardless of `max_price_age_secs` — a
+/// constant, not a per-market parameter.
+pub const MAX_FUTURE_PRICE_SKEW_SECS: i64 = 60;

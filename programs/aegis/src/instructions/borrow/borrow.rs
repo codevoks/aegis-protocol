@@ -1,23 +1,24 @@
-//! `borrow` — **hard-gated** until Phase 5 (`instruction-catalogue.md` §14,
-//! `docs/phase-roadmap.md` "Sequencing the oracle dependency").
+//! `borrow` — real oracle-backed borrowing (`instruction-catalogue.md` §14,
+//! `docs/phases/phase-05-oracle.md`).
 //!
-//! No oracle account exists anywhere in [`Borrow`]'s account list — there is structurally nothing
-//! a caller could pass that would let this instruction compute a price. The handler validates
-//! accounts and arguments, then **unconditionally** returns [`AegisError::OracleNotYetAvailable`]
-//! before reading or writing any state. This is a hard failure, strictly *more* restrictive than
-//! the eventual behavior, never a permissive placeholder, dummy oracle, or hardcoded price.
+//! The Phase 3/4 hard gate (`OracleNotYetAvailable`, unconditional) is removed here: this
+//! instruction now validates the oracle (`oracle::require_valid_price`, checks O-1..O-11),
+//! computes conservative collateral/debt values (`aegis-math::health`, INV-ORA-03: collateral at
+//! the confidence lower bound rounded down, debt at the upper bound rounded up), and enforces
+//! `debt_value <= collateral_value * max_ltv / WAD` (INV-SOLV-01) before any state mutation.
 //!
-//! Everything Phase 5's real `borrow` will need *except* the price read and the LTV check is
-//! implemented and independently unit-tested here as [`compute_borrow`] — a pure function the live
-//! handler does not (and, by construction, cannot) reach. Phase 5 only needs to add the oracle
-//! validation and the collateral/debt-value LTV check in front of a call to this function; it does
-//! not need to rewrite the accrual, share-conversion, free-liquidity, or `min_debt` logic.
+//! **Ordering is security-critical (INV-ORA-07):** oracle validation is the first fallible
+//! operation in [`handler`], strictly before `accrue_mut` or any account write, so a failed
+//! oracle check leaves no state modified.
 
 use crate::constants::{LOAN_VAULT_SEED, MARKET_SEED, POSITION_SEED};
 use crate::error::AegisError;
+use crate::events::Borrowed;
 use crate::guards::require_exactly_one_amount;
+use crate::oracle;
 use crate::state::{Market, Position};
-use aegis_math::{to_assets_up, to_shares_up};
+use crate::token::transfer::transfer_checked_out;
+use aegis_math::{collateral_value, debt_value, is_within_max_ltv, to_assets_up, to_shares_up};
 use anchor_lang::prelude::*;
 use anchor_spl::token_interface::{Mint, TokenAccount, TokenInterface};
 
@@ -25,10 +26,6 @@ use anchor_spl::token_interface::{Mint, TokenAccount, TokenInterface};
 pub struct Borrow<'info> {
     pub owner: Signer<'info>,
 
-    /// Declared `mut` to match the real Phase 5 instruction's structural shape
-    /// (`instruction-catalogue.md` §14: "Writes `Market`? yes") even though the handler below
-    /// never actually writes it — the gate fires first, and Solana's atomicity means no write
-    /// this instruction *would* have made can ever be observed regardless.
     #[account(
         mut,
         seeds = [
@@ -74,9 +71,14 @@ pub struct Borrow<'info> {
     pub loan_mint: InterfaceAccount<'info, Mint>,
 
     pub loan_token_program: Interface<'info, TokenInterface>,
-    // Deliberately NO price accounts: `oracle-design.md`'s `PriceSource` does not exist until
-    // Phase 5. There is no field here a caller could populate with a fake, stale, or assumed
-    // price -- the absence is the safety property, not merely an omission.
+
+    /// CHECK: validated field-by-field by `oracle::require_valid_price` (O-1..O-11). Not
+    /// `Account<'info, PriceUpdateV2>` because `oracle::PriceSource::read_price`'s frozen
+    /// signature (`oracle-design.md` §1) takes a raw `AccountInfo`, so a v2 non-Pyth implementer
+    /// would not need to depend on Pyth's account type at all.
+    pub collateral_price_update: UncheckedAccount<'info>,
+    /// CHECK: as `collateral_price_update`, for the loan asset's feed.
+    pub loan_price_update: UncheckedAccount<'info>,
 }
 
 pub fn handler(ctx: Context<Borrow>, assets: u64, shares: u128) -> Result<()> {
@@ -87,15 +89,102 @@ pub fn handler(ctx: Context<Borrow>, assets: u64, shares: u128) -> Result<()> {
         AegisError::TokenProgramMismatch
     );
 
-    // Hard sequencing gate (docs/phase-roadmap.md "Sequencing the oracle dependency"): this must
-    // fire before any state is read or written. No oracle exists before Phase 5, so no price is
-    // available to value collateral/debt or check max_ltv -- there is no code path below this
-    // point in Phase 4.
-    Err(error!(AegisError::OracleNotYetAvailable))
+    // INV-ORA-07: validate the oracle BEFORE any state write -- this is the first fallible
+    // operation that could read external, caller-supplied data, and everything below it (accrual,
+    // share math, the LTV check, the transfer) only runs once both feeds are known-good.
+    let now = Clock::get()?.unix_timestamp;
+    let (collateral_band, loan_band) = oracle::require_valid_price(
+        &ctx.accounts.market,
+        &ctx.accounts.collateral_price_update.to_account_info(),
+        &ctx.accounts.loan_price_update.to_account_info(),
+        now,
+    )?;
+
+    // Interest accrues under the already-validated price; using accrued (larger) totals for the
+    // conversions and the LTV check below is what economic-model.md §4.5 requires.
+    let (_outcome, _fee_shares) = ctx
+        .accounts
+        .market
+        .accrue_mut(&mut ctx.accounts.fee_position, now)?;
+
+    let computation = compute_borrow(
+        assets,
+        shares,
+        ctx.accounts.market.total_borrow_assets,
+        ctx.accounts.market.total_borrow_shares,
+        ctx.accounts.market.total_supply_assets,
+        ctx.accounts.market.min_debt,
+        ctx.accounts.position.borrow_shares,
+    )?;
+
+    // INV-SOLV-01: debt_value <= collateral_value * max_ltv / WAD, valued conservatively
+    // (collateral at the confidence lower bound floored, debt at the upper bound ceiled --
+    // INV-ORA-03).
+    let cv = collateral_value(
+        ctx.accounts.position.collateral_amount,
+        collateral_band.lo,
+        ctx.accounts.market.collateral_decimals,
+    )
+    .map_err(AegisError::from)?;
+    let dv = debt_value(
+        computation.new_position_debt_assets,
+        loan_band.hi,
+        ctx.accounts.market.loan_decimals,
+    )
+    .map_err(AegisError::from)?;
+    let within_ltv =
+        is_within_max_ltv(cv, dv, ctx.accounts.market.max_ltv).map_err(AegisError::from)?;
+    require!(within_ltv, AegisError::ExceedsMaxLtv);
+
+    ctx.accounts.position.borrow_shares = computation.new_position_borrow_shares;
+    ctx.accounts.market.total_borrow_shares = ctx
+        .accounts
+        .market
+        .total_borrow_shares
+        .checked_add(computation.shares_minted)
+        .ok_or(AegisError::ArithmeticOverflow)?;
+    ctx.accounts.market.total_borrow_assets = ctx
+        .accounts
+        .market
+        .total_borrow_assets
+        .checked_add(computation.assets_out)
+        .ok_or(AegisError::ArithmeticOverflow)?;
+
+    let market = &ctx.accounts.market;
+    let market_key = market.key();
+    let config_id_bytes = market.config_id.to_le_bytes();
+    let signer_seeds: &[&[u8]] = &[
+        MARKET_SEED,
+        market.collateral_mint.as_ref(),
+        market.loan_mint.as_ref(),
+        &config_id_bytes,
+        &[market.bump],
+    ];
+
+    transfer_checked_out(
+        &ctx.accounts.loan_vault.to_account_info(),
+        &ctx.accounts.loan_mint.to_account_info(),
+        &ctx.accounts.owner_loan_ata.to_account_info(),
+        &market.to_account_info(),
+        &ctx.accounts.loan_token_program.to_account_info(),
+        computation.assets_out,
+        ctx.accounts.loan_mint.decimals,
+        signer_seeds,
+    )?;
+
+    emit!(Borrowed {
+        market: market_key,
+        position: ctx.accounts.position.key(),
+        owner: ctx.accounts.owner.key(),
+        assets_out: computation.assets_out,
+        shares_minted: computation.shares_minted,
+    });
+
+    Ok(())
 }
 
-/// The result of [`compute_borrow`]: everything a successful borrow would need to write, computed
-/// against already-accrued totals.
+/// The result of [`compute_borrow`]: everything a successful borrow writes, computed against
+/// already-accrued totals.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct BorrowComputation {
     pub assets_out: u64,
@@ -104,11 +193,11 @@ pub struct BorrowComputation {
     pub new_position_debt_assets: u64,
 }
 
-/// **Pure**, not called by the live [`handler`] above (see the module doc). Computes the
-/// assets/shares conversion (`to_shares_up`/`to_assets_up`, economic-model.md §1.3 rows 3 and 7),
-/// enforces the free-liquidity bound (INV-BOR-02, `U-BORROW-01`), and enforces the post-borrow
-/// `min_debt` floor (INV-SOLV-07, E-25, `U-BORROW-02`) -- everything `borrow` needs except the
-/// price read and the LTV check.
+/// **Pure.** Computes the assets/shares conversion (`to_shares_up`/`to_assets_up`,
+/// economic-model.md §1.3 rows 3 and 7), enforces the free-liquidity bound (INV-BOR-02,
+/// `U-BORROW-01`), and enforces the post-borrow `min_debt` floor (INV-SOLV-07, E-25,
+/// `U-BORROW-02`) — everything `borrow` needs except the price read and the LTV check, which
+/// [`handler`] performs around this function's result.
 pub fn compute_borrow(
     assets: u64,
     shares: u128,

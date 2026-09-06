@@ -1,11 +1,12 @@
 //! Aegis Protocol on-chain program.
 //!
-//! Phase 3 scope adds real collateral custody flows on top of Phase 2's state and vaults:
-//! `deposit_collateral` (no oracle, no pause, `Market` read-only, measured-delta accounting),
-//! `withdraw_collateral` (zero-debt path only — any position with `borrow_shares > 0` is refused
-//! with `OracleNotYetAvailable`, a hard sequencing gate rather than a bypass), and
-//! `close_position`. Still no supply, borrow, repay, interest, oracle, or liquidation — see
-//! `docs/phases/phase-03-collateral.md`.
+//! Phase 5 adds the real oracle: `oracle::require_valid_price` implements checks O-1..O-11
+//! (`docs/oracle-design.md`) against the real `pyth-solana-receiver-sdk` 2.0.0. The Phase 3/4
+//! hard gates are removed — `borrow` now borrows for real, oracle-validated and LTV-checked
+//! (`instruction-catalogue.md` §14), and `withdraw_collateral` now validates post-withdrawal
+//! health whenever `position.borrow_shares > 0` (§11), while a debt-free withdrawal still reads
+//! no oracle at all (E-08). Still no liquidation or bad debt — see
+//! `docs/phases/phase-05-oracle.md`.
 //!
 //! `lib.rs` contains no logic beyond wiring instruction entry points to their handlers
 //! (architecture.md §2): validate accounts → read state → call math → write state → move tokens
@@ -22,6 +23,7 @@ pub mod error;
 pub mod events;
 pub mod guards;
 pub mod instructions;
+pub mod oracle;
 pub mod state;
 pub mod token;
 
@@ -80,9 +82,9 @@ pub mod aegis {
         instructions::collateral::deposit_collateral::handler(ctx, amount)
     }
 
-    /// Withdraws collateral for the zero-debt path only; a position with outstanding
-    /// `borrow_shares` is refused with `OracleNotYetAvailable` (`instruction-catalogue.md` §11,
-    /// `docs/phase-roadmap.md` "Sequencing the oracle dependency").
+    /// Withdraws collateral. A debt-free position reads no oracle at all (E-08); a position with
+    /// outstanding `borrow_shares` validates the oracle and requires post-withdrawal
+    /// `debt_value <= collateral_value * max_ltv / WAD` (`instruction-catalogue.md` §11).
     pub fn withdraw_collateral(ctx: Context<WithdrawCollateral>, amount: u64) -> Result<()> {
         instructions::collateral::withdraw_collateral::handler(ctx, amount)
     }
@@ -104,9 +106,9 @@ pub mod aegis {
         instructions::lend::withdraw::handler(ctx, assets, shares)
     }
 
-    /// **Hard-gated until Phase 5** — always returns `OracleNotYetAvailable`; no oracle account
-    /// exists yet to price collateral against debt (`instruction-catalogue.md` §14,
-    /// `docs/phase-roadmap.md` "Sequencing the oracle dependency").
+    /// Borrows the loan asset against posted collateral, oracle-validated and LTV-checked
+    /// (`instruction-catalogue.md` §14, `docs/oracle-design.md`). Fails closed on any oracle
+    /// validation failure.
     pub fn borrow(ctx: Context<Borrow>, assets: u64, shares: u128) -> Result<()> {
         instructions::borrow::borrow::handler(ctx, assets, shares)
     }

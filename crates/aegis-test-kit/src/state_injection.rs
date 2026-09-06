@@ -1,13 +1,14 @@
 //! **TEST-KIT STATE INJECTION — for constructing pre-existing debt only.**
 //!
-//! Phase 4's `borrow` is hard-gated to always fail (`OracleNotYetAvailable`) until Phase 5's
-//! oracle exists (`docs/phase-roadmap.md` "Sequencing the oracle dependency") — so no real
-//! transaction can ever produce a position with `borrow_shares > 0` yet. Several required Phase 4
-//! tests (`repay` against real debt, interest accrual on a market with utilization, the 100%
-//! utilization case) genuinely need such a position to exist. `docs/phases/phase-04-lending.md`
-//! and the Phase 4 task brief are explicit that this must be done through **test-kit state
-//! injection**, never by weakening `borrow` — the same legitimate technique Phase 2/3 already
-//! established (`svm.set_account` to inject an attacker-owned or phantom-debt fixture account).
+//! Originally written for Phase 4, when `borrow` was hard-gated to always fail
+//! (`OracleNotYetAvailable`) and no real transaction could ever produce a position with
+//! `borrow_shares > 0`. Phase 5 removed that gate — `borrow` is now real and oracle-validated
+//! (`programs/aegis/src/instructions/borrow/borrow.rs`) — but several Phase 4 tests (interest
+//! accrual on a market with utilization, the 100% utilization case) still use this fixture
+//! deliberately, to isolate accrual math from oracle/collateral setup rather than because no real
+//! path exists. `docs/phases/phase-04-lending.md` and the Phase 4 task brief required this
+//! technique over weakening `borrow` — the same legitimate approach Phase 2/3 already established
+//! (`svm.set_account` to inject an attacker-owned or phantom-debt fixture account).
 //!
 //! [`seed_borrow_state`] writes directly to the already-real `Market`/`Position`/`loan_vault`
 //! accounts (created by real `create_market`/`init_position`/`supply` transactions) to make it

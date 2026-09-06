@@ -1,22 +1,23 @@
-//! `withdraw_collateral` — the Phase 3 **zero-debt path only** (`docs/phases/phase-03-collateral.md`,
-//! `docs/phase-roadmap.md` "Sequencing the oracle dependency").
+//! `withdraw_collateral` — the full instruction (`instruction-catalogue.md` §11,
+//! `docs/phases/phase-05-oracle.md`).
 //!
-//! The full, final instruction (`instruction-catalogue.md` §11) prices the position and enforces
-//! `debt_value <= collateral_value * max_ltv / WAD` whenever `position.borrow_shares > 0`. That
-//! branch does not exist yet — there is no oracle before Phase 5 and no borrowing before Phase 4.
-//! Rather than ship a permissive placeholder (rejected outright by the phase roadmap), a position
-//! with any outstanding debt is refused with `OracleNotYetAvailable`: a hard failure, strictly
-//! *more* restrictive than the eventual behavior, never less. A debt-free position can always
-//! withdraw its own collateral, oracle or no oracle (INV-ORA-02, E-08).
+//! A debt-free position withdraws with **no oracle read at all** (E-08, INV-ORA-02) — this is the
+//! unchanged Phase 3 path. A position with `borrow_shares > 0` now validates the oracle
+//! (`oracle::require_valid_price`, O-1..O-11) and requires the **post-withdrawal** state to
+//! satisfy `debt_value <= collateral_value * max_ltv / WAD` (INV-SOLV-01) before any mutation —
+//! never the pre-withdrawal collateral amount.
 //!
-//! `Market` is never written here, for the same parallelism reason as `deposit_collateral`
-//! (claim C2, `account-model.md` §8) — enforced by `A-PAR-01`.
+//! `Market` is still never written here (claim C2, `account-model.md` §8, `A-PAR-01`): the debt
+//! figure for the health check uses `Market::accrue_view` (pure, `economic-model.md` §4.5), never
+//! `accrue_mut`.
 
 use crate::constants::{COLLATERAL_VAULT_SEED, MARKET_SEED};
 use crate::error::AegisError;
 use crate::events::CollateralWithdrawn;
+use crate::oracle;
 use crate::state::{Market, Position};
 use crate::token::transfer::transfer_checked_out;
+use aegis_math::{collateral_value, debt_value, is_within_max_ltv, to_assets_up};
 use anchor_lang::prelude::*;
 use anchor_spl::token_interface::{Mint, TokenAccount, TokenInterface};
 
@@ -63,6 +64,13 @@ pub struct WithdrawCollateral<'info> {
     pub collateral_mint: InterfaceAccount<'info, Mint>,
 
     pub collateral_token_program: Interface<'info, TokenInterface>,
+
+    /// CHECK: validated field-by-field by `oracle::require_valid_price` (O-1..O-11) only when
+    /// `position.borrow_shares > 0`. A debt-free withdrawal never reads either price account
+    /// (E-08) — a caller may pass any account here in that case.
+    pub collateral_price_update: UncheckedAccount<'info>,
+    /// CHECK: as `collateral_price_update`, for the loan asset's feed.
+    pub loan_price_update: UncheckedAccount<'info>,
 }
 
 pub fn handler(ctx: Context<WithdrawCollateral>, amount: u64) -> Result<()> {
@@ -74,19 +82,53 @@ pub fn handler(ctx: Context<WithdrawCollateral>, amount: u64) -> Result<()> {
         AegisError::TokenProgramMismatch
     );
 
-    // Hard sequencing gate: no oracle exists before Phase 5, so any priced (debt-aware)
-    // withdrawal is unreachable by construction, not merely unimplemented. This is the ONLY
-    // check on the debt branch — there is deliberately no placeholder price or "assumed healthy"
-    // path (docs/phase-roadmap.md).
-    require!(
-        ctx.accounts.position.borrow_shares == 0,
-        AegisError::OracleNotYetAvailable
-    );
-
     require!(
         amount <= ctx.accounts.position.collateral_amount,
         AegisError::InsufficientCollateral
     );
+
+    // INV-ORA-07 / E-08: only a debt-bearing position needs the oracle at all. Validate BEFORE
+    // any state write, and evaluate health against the **post-withdrawal** collateral amount
+    // (task requirement: "the proposed resulting state must be safe," never the pre-withdrawal
+    // one).
+    if ctx.accounts.position.borrow_shares > 0 {
+        let now = Clock::get()?.unix_timestamp;
+        let (collateral_band, loan_band) = oracle::require_valid_price(
+            &ctx.accounts.market,
+            &ctx.accounts.collateral_price_update.to_account_info(),
+            &ctx.accounts.loan_price_update.to_account_info(),
+            now,
+        )?;
+
+        // Market is never written by this instruction (C2) -- accrue_view is the pure,
+        // non-mutating read economic-model.md §4.5 specifies for exactly this purpose.
+        let accrued = ctx.accounts.market.accrue_view(now)?;
+        let debt_assets = to_assets_up(
+            ctx.accounts.position.borrow_shares,
+            accrued.total_borrow_assets,
+            ctx.accounts.market.total_borrow_shares,
+        )
+        .map_err(AegisError::from)?;
+
+        let post_withdraw_collateral = ctx
+            .accounts
+            .position
+            .collateral_amount
+            .checked_sub(amount)
+            .ok_or(AegisError::ArithmeticOverflow)?;
+
+        let cv = collateral_value(
+            post_withdraw_collateral,
+            collateral_band.lo,
+            ctx.accounts.market.collateral_decimals,
+        )
+        .map_err(AegisError::from)?;
+        let dv = debt_value(debt_assets, loan_band.hi, ctx.accounts.market.loan_decimals)
+            .map_err(AegisError::from)?;
+        let within_ltv =
+            is_within_max_ltv(cv, dv, ctx.accounts.market.max_ltv).map_err(AegisError::from)?;
+        require!(within_ltv, AegisError::ExceedsMaxLtv);
+    }
 
     let market = &ctx.accounts.market;
     let market_key = market.key();

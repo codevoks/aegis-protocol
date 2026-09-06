@@ -5,13 +5,12 @@
 # (`token::transfer::transfer_checked_in`) — and that each helper is called only from the
 # enumerated instructions that are supposed to move tokens (account-model.md §6.3 enumerates the
 # complete, six-path custody surface). Phase 3 added the two collateral paths
-# (`deposit_collateral`/`withdraw_collateral`); Phase 4 adds the three loan-side paths that move
-# real tokens (`supply`, `withdraw`, `repay` — `borrow`'s outbound transfer does not exist in
-# Phase 4: the instruction is hard-gated and returns before ever reaching a transfer call, so it is
-# deliberately NOT in either allowlist below; adding it here would itself be a signal that the gate
-# had been weakened). A call to `transfer_checked_out`/`transfer_checked_in` anywhere else, or a
-# raw `token_interface::transfer_checked` call bypassing both helpers, would be a new, unaudited
-# custody path.
+# (`deposit_collateral`/`withdraw_collateral`); Phase 4 added the three loan-side paths that move
+# real tokens (`supply`, `withdraw`, `repay`); Phase 5 enables the real, oracle-validated `borrow`
+# path (`loan_vault -> owner`, account-model.md §6.3's fourth row), so `borrow.rs` now legitimately
+# joins the outbound allowlist below. A call to `transfer_checked_out`/`transfer_checked_in`
+# anywhere else, or a raw `token_interface::transfer_checked` call bypassing both helpers, would be
+# a new, unaudited custody path.
 set -euo pipefail
 
 cd "$(dirname "${BASH_SOURCE[0]}")/.."
@@ -19,6 +18,7 @@ cd "$(dirname "${BASH_SOURCE[0]}")/.."
 fail=0
 
 allowed_out_callers=$(cat <<'EOF'
+programs/aegis/src/instructions/borrow/borrow.rs
 programs/aegis/src/instructions/collateral/withdraw_collateral.rs
 programs/aegis/src/instructions/lend/withdraw.rs
 EOF
@@ -53,13 +53,6 @@ if [ "$in_callers" != "$(echo "$allowed_in_callers" | sort)" ]; then
     fail=1
 fi
 
-# `borrow` must never call either transfer helper -- it is hard-gated in Phase 4 and must return
-# before ever reaching a transfer call (docs/phase-roadmap.md "Sequencing the oracle dependency").
-if grep -q 'transfer_checked_\(in\|out\)(' programs/aegis/src/instructions/borrow/borrow.rs; then
-    echo "check-collateral-transfer-paths: borrow.rs must never call a transfer helper while hard-gated" >&2
-    fail=1
-fi
-
 # No instruction may bypass the shared helpers and call the raw CPI directly.
 raw_callers=$(grep -rl 'token_interface::transfer_checked(' programs/aegis/src --include='*.rs' \
     | grep -v 'programs/aegis/src/token/transfer.rs' || true)
@@ -73,4 +66,4 @@ if [ "$fail" -ne 0 ]; then
     exit 1
 fi
 
-echo "check-collateral-transfer-paths: OK — vault token movement goes through exactly the shared helpers, from exactly their enumerated call sites (borrow.rs calls neither, as required by the Phase 4 gate)"
+echo "check-collateral-transfer-paths: OK — vault token movement goes through exactly the shared helpers, from exactly their enumerated call sites"

@@ -11,6 +11,7 @@ use anchor_lang::solana_program::system_program;
 use anchor_lang::{AccountDeserialize, InstructionData, ToAccountMetas};
 use litesvm::types::TransactionResult;
 use litesvm::LiteSVM;
+use solana_compute_budget_interface::ComputeBudgetInstruction;
 use solana_instruction::Instruction;
 use solana_instruction_error::InstructionError;
 use solana_keypair::Keypair;
@@ -19,6 +20,16 @@ use solana_pubkey::Pubkey;
 use solana_signer::Signer;
 use solana_transaction::versioned::VersionedTransaction;
 use solana_transaction_error::TransactionError;
+
+/// `borrow`, the debt path of `withdraw_collateral`, and `repay` when a nontrivial interval has
+/// elapsed since the last accrual can all exceed the network's default 200,000 CU budget: each
+/// performs several 256-bit `mul_div_*` divisions (accrual, share conversion, and -- for
+/// `borrow`/`withdraw_collateral` -- oracle-band and LTV valuation on top) together with a full
+/// Anchor account list and a token CPI. A real client must request a higher compute unit limit via
+/// the standard `ComputeBudget` program, exactly as this test harness does below; this is a
+/// resource-allocation concern, not a security check -- INV-RES-01's 200k-budget measurement is
+/// explicitly Phase 11 (Performance) scope, not a Phase 5 acceptance criterion.
+const HIGHER_COMPUTE_UNIT_LIMIT: u32 = 400_000;
 
 // --- PDA derivation, mirroring account-model.md exactly ---
 
@@ -106,13 +117,35 @@ fn send(
     extra_signers: &[&Keypair],
     ix: Instruction,
 ) -> TransactionResult {
+    send_many(svm, payer, extra_signers, vec![ix])
+}
+
+fn send_many(
+    svm: &mut LiteSVM,
+    payer: &Keypair,
+    extra_signers: &[&Keypair],
+    ixs: Vec<Instruction>,
+) -> TransactionResult {
     let blockhash = svm.latest_blockhash();
-    let message = Message::new_with_blockhash(&[ix], Some(&payer.pubkey()), &blockhash);
+    let message = Message::new_with_blockhash(&ixs, Some(&payer.pubkey()), &blockhash);
     let mut signers: Vec<&Keypair> = vec![payer];
     signers.extend_from_slice(extra_signers);
     let tx = VersionedTransaction::try_new(VersionedMessage::Legacy(message), &signers)
         .expect("failed to sign transaction");
     svm.send_transaction(tx)
+}
+
+/// As `send`, but prepends a `ComputeBudget::set_compute_unit_limit` instruction --
+/// `borrow`/`withdraw_collateral`'s oracle-validated path needs it (see
+/// `ORACLE_INSTRUCTION_COMPUTE_UNIT_LIMIT`'s doc comment).
+fn send_priced(
+    svm: &mut LiteSVM,
+    payer: &Keypair,
+    extra_signers: &[&Keypair],
+    ix: Instruction,
+) -> TransactionResult {
+    let budget_ix = ComputeBudgetInstruction::set_compute_unit_limit(HIGHER_COMPUTE_UNIT_LIMIT);
+    send_many(svm, payer, extra_signers, vec![budget_ix, ix])
 }
 
 /// Asserts `result` failed with exactly the given `AegisError` — not merely that the transaction
@@ -311,6 +344,8 @@ pub fn withdraw_collateral_ix(
     owner_collateral_ata: Pubkey,
     collateral_mint: Pubkey,
     collateral_token_program: Pubkey,
+    collateral_price_update: Pubkey,
+    loan_price_update: Pubkey,
     amount: u64,
 ) -> Instruction {
     Instruction {
@@ -323,6 +358,8 @@ pub fn withdraw_collateral_ix(
             owner_collateral_ata,
             collateral_mint,
             collateral_token_program,
+            collateral_price_update,
+            loan_price_update,
         }
         .to_account_metas(None),
         data: aegis::instruction::WithdrawCollateral { amount }.data(),
@@ -339,6 +376,8 @@ pub fn withdraw_collateral(
     owner_collateral_ata: Pubkey,
     collateral_mint: Pubkey,
     collateral_token_program: Pubkey,
+    collateral_price_update: Pubkey,
+    loan_price_update: Pubkey,
     amount: u64,
 ) -> TransactionResult {
     let ix = withdraw_collateral_ix(
@@ -349,9 +388,11 @@ pub fn withdraw_collateral(
         owner_collateral_ata,
         collateral_mint,
         collateral_token_program,
+        collateral_price_update,
+        loan_price_update,
         amount,
     );
-    send(svm, owner, &[], ix)
+    send_priced(svm, owner, &[], ix)
 }
 
 // --- close_position ---
@@ -501,7 +542,7 @@ pub fn withdraw(
     send(svm, owner, &[], ix)
 }
 
-// --- borrow (hard-gated: always fails with OracleNotYetAvailable in Phase 4) ---
+// --- borrow (real, oracle-validated -- Phase 5) ---
 
 #[allow(clippy::too_many_arguments)]
 pub fn borrow_ix(
@@ -513,6 +554,8 @@ pub fn borrow_ix(
     owner_loan_ata: Pubkey,
     loan_mint: Pubkey,
     loan_token_program: Pubkey,
+    collateral_price_update: Pubkey,
+    loan_price_update: Pubkey,
     assets: u64,
     shares: u128,
 ) -> Instruction {
@@ -527,6 +570,8 @@ pub fn borrow_ix(
             owner_loan_ata,
             loan_mint,
             loan_token_program,
+            collateral_price_update,
+            loan_price_update,
         }
         .to_account_metas(None),
         data: aegis::instruction::Borrow { assets, shares }.data(),
@@ -544,6 +589,8 @@ pub fn borrow(
     owner_loan_ata: Pubkey,
     loan_mint: Pubkey,
     loan_token_program: Pubkey,
+    collateral_price_update: Pubkey,
+    loan_price_update: Pubkey,
     assets: u64,
     shares: u128,
 ) -> TransactionResult {
@@ -556,10 +603,12 @@ pub fn borrow(
         owner_loan_ata,
         loan_mint,
         loan_token_program,
+        collateral_price_update,
+        loan_price_update,
         assets,
         shares,
     );
-    send(svm, owner, &[], ix)
+    send_priced(svm, owner, &[], ix)
 }
 
 // --- repay ---
@@ -620,7 +669,12 @@ pub fn repay(
         assets,
         shares,
     );
-    send(svm, payer, &[], ix)
+    // `repay` accrues interest before transferring (economic-model.md §4.5); a nonzero `dt` since
+    // the last accrual, combined with the token CPI and full account list, can exceed the default
+    // 200,000 CU the same way borrow's does -- see `ORACLE_INSTRUCTION_COMPUTE_UNIT_LIMIT`'s doc
+    // comment (this is a pre-existing repay/accrual cost, unrelated to the oracle; no prior-phase
+    // test exercised repay together with a large accrual gap, only `accrue_interest` standalone).
+    send_priced(svm, payer, &[], ix)
 }
 
 // --- accrue_interest ---

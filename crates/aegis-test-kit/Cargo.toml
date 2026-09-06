@@ -34,3 +34,14 @@ solana-program-pack = "3"
 # Same major line litesvm 0.16.0 itself resolves (`~3.1.1`) -- used by the Phase 4 demo to warp
 # the sysvar Clock without any real wall-clock waiting.
 solana-clock = "3"
+# Real SDK types for `pyth_fixture.rs` -- byte-exact PriceUpdateV2 construction against the actual
+# crate's own AnchorSerialize/Discriminator impls, never a hand-rolled layout guess (ADR-0008).
+pyth-solana-receiver-sdk = "2.0.0"
+# `borrow`/`withdraw_collateral`'s oracle-validated path (Phase 5) genuinely needs more than the
+# default 200,000 CU: two PriceUpdateV2 deserializations plus several 256-bit mul_div_* divisions
+# (accrual, share conversion, valuation, LTV check) -- a real client, same as this test harness,
+# must request a higher compute unit limit via a standard ComputeBudget instruction. This is a
+# resource-allocation concern, not a security check; INV-RES-01's 200k-budget measurement is
+# explicitly Phase 11 (Performance) scope. Same major line already resolved transitively (verified
+# in Cargo.lock).
+solana-compute-budget-interface = "3"

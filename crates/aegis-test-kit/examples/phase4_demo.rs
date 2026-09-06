@@ -1,8 +1,12 @@
 //! Phase 4 demo (`docs/phases/phase-04-lending.md` "Demo"): a lender supplies loan liquidity, a
-//! borrow is attempted and correctly refused (`OracleNotYetAvailable`), a debt position is seeded
-//! through TEST-KIT state injection (never a weakened `borrow`), time is warped 30 days, interest
-//! accrues, utilization/borrow-APY/supply-APY are printed, the protocol fee accrues as supply
-//! shares, and the lender withdraws principal plus earned interest.
+//! debt position is seeded through TEST-KIT state injection (never a weakened `borrow`), time is
+//! warped 30 days, interest accrues, utilization/borrow-APY/supply-APY are printed, the protocol
+//! fee accrues as supply shares, and the lender withdraws principal plus earned interest.
+//!
+//! Preserved as Phase 4's own historical demo (`docs/project-status.md`'s Phase 4 evidence
+//! quotes its original transcript verbatim); Phase 4's original borrow-is-refused section was
+//! removed since Phase 5 made `borrow` real — see `phase5_demo` for the real, oracle-validated
+//! borrow flow this example no longer demonstrates.
 //!
 //! Zero-cost and local: an in-process LiteSVM instance loaded with the actual built `aegis.so` and
 //! the real embedded SPL Token program bytecode LiteSVM ships. No devnet, no RPC, no API key
@@ -19,17 +23,13 @@ use aegis_math::{
     borrow_rate, mul_div_floor, taylor3, taylor_x, utilization, SECONDS_PER_YEAR, WAD,
 };
 use aegis_test_kit::{
-    accrue_interest, borrow_ix, create_market, create_spl_mint, create_token_account, deploy,
-    fetch_market, fetch_position, fetch_token_account_base, init_position, initialize_protocol,
-    invariants, mint_to, reference_market_args, seed_borrow_state, spl_token_interface, supply,
-    withdraw,
+    accrue_interest, create_market, create_spl_mint, create_token_account, deploy, fetch_market,
+    fetch_position, fetch_token_account_base, init_position, initialize_protocol, invariants,
+    mint_to, reference_market_args, seed_borrow_state, spl_token_interface, supply, withdraw,
 };
-use solana_instruction::Instruction;
 use solana_keypair::Keypair;
-use solana_message::{Message, VersionedMessage};
 use solana_pubkey::Pubkey;
 use solana_signer::Signer;
-use solana_transaction::versioned::VersionedTransaction;
 
 fn program_bytes() -> &'static [u8] {
     include_bytes!(concat!(
@@ -44,18 +44,6 @@ fn fixed_pubkey(seed: u8) -> Pubkey {
 
 fn section(title: &str) {
     println!("\n=== {title} ===");
-}
-
-fn send(
-    svm: &mut litesvm::LiteSVM,
-    payer: &Keypair,
-    ix: Instruction,
-) -> litesvm::types::TransactionResult {
-    let blockhash = svm.latest_blockhash();
-    let message = Message::new_with_blockhash(&[ix], Some(&payer.pubkey()), &blockhash);
-    let tx = VersionedTransaction::try_new(VersionedMessage::Legacy(message), &[payer])
-        .expect("failed to sign transaction");
-    svm.send_transaction(tx)
 }
 
 /// Formats a WAD fraction as a percentage string with 4 decimal places, without floats: prints
@@ -155,47 +143,17 @@ fn main() {
     invariants::assert_all_lending(&svm, &market, &[lender_position], &fee_position);
     println!("  INV-CUS-01 / INV-ACC-01/02/03/06: all hold");
 
-    // --- 3. Borrow is attempted and correctly refused ---
-    section("3. Borrow is attempted -- and correctly refused");
+    // --- 3. Borrower position (real oracle-backed `borrow` is Phase 5 -- see `phase5_demo`) ---
+    section("3. Borrower position created (real oracle-backed borrow: see phase5_demo)");
     let borrower = Keypair::new_from_array([30u8; 32]);
     svm.airdrop(&borrower.pubkey(), 10_000_000_000)
         .expect("airdrop to borrower");
-    let borrower_ata = create_token_account(
-        &mut svm,
-        &admin,
-        31,
-        usdc_mint,
-        borrower.pubkey(),
-        spl_token_interface::ID,
-        &[],
-    );
     let (r, borrower_position) = init_position(&mut svm, &admin, market, borrower.pubkey());
     r.expect("init_position (borrower)");
-    let ix = borrow_ix(
-        &borrower.pubkey(),
-        market,
-        borrower_position,
-        fee_position,
-        loan_vault,
-        borrower_ata,
-        usdc_mint,
-        spl_token_interface::ID,
-        500_000_000_000,
-        0,
-    );
-    let borrow_result = send(&mut svm, &borrower, ix);
-    match &borrow_result {
-        Err(failed) => println!("  borrow(500,000 USDC) -> REJECTED: {:?}", failed.err),
-        Ok(_) => panic!("borrow must fail in Phase 4 -- it did not"),
-    }
-    let borrower_state = fetch_position(&svm, &borrower_position);
-    assert_eq!(
-        borrower_state.borrow_shares, 0,
-        "the refused borrow must not have moved any state"
-    );
     println!(
-        "  position.borrow_shares after refusal: {} (unchanged)",
-        borrower_state.borrow_shares
+        "  position: {borrower_position} (this demo seeds debt via test-kit injection below; \
+         `cargo run -p aegis-test-kit --example phase5_demo` exercises the real, oracle-validated \
+         borrow path end to end)"
     );
 
     // --- 4. Seed debt via TEST-KIT state injection (not a weakened borrow) ---

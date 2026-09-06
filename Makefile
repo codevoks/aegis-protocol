@@ -42,15 +42,17 @@ fuzz:
 bench:
 	@echo "not implemented until Phase 11 (performance)"
 
-## Phase 4 demo: lender supplies, borrow is correctly refused (OracleNotYetAvailable), debt is
-## seeded via TEST-KIT state injection, 30 days are warped, interest accrues, utilization/borrow
-## APY/supply APY are printed, protocol fee shares accrue, and the lender withdraws principal plus
-## interest — see docs/phases/phase-04-lending.md "Demo". Zero-cost, offline, in-process LiteSVM.
+## Phase 5 demo: real oracle-validated borrow succeeds, the oracle goes stale so borrow and
+## debt-bearing withdraw_collateral fail closed while repay and deposit_collateral keep working,
+## the oracle recovers at a new price, and the recomputed health factor is printed — see
+## docs/phases/phase-05-oracle.md "Demo". Zero-cost, offline, in-process LiteSVM; byte-exact
+## PriceUpdateV2 fixtures via the real pyth-solana-receiver-sdk, no Hermes, no Pyth program deploy.
 ## Earlier phase demos remain runnable directly:
 ## `cargo run -p aegis-test-kit --example phase2_demo`
 ## `cargo run -p aegis-test-kit --example phase3_demo`
+## `cargo run -p aegis-test-kit --example phase4_demo`
 demo: build
-	cargo run -p aegis-test-kit --example phase4_demo
+	cargo run -p aegis-test-kit --example phase5_demo
 
 ## UI against local Surfpool — Phase 9.
 app:

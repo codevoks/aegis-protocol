@@ -6,8 +6,8 @@
 
 use aegis::error::AegisError;
 use aegis_test_kit::{
-    assert_aegis_error, borrow_ix, create_market, create_spl_mint, create_token_account, deploy,
-    fetch_position, fetch_token_account_base, init_position, initialize_protocol, position_pda,
+    assert_aegis_error, create_market, create_spl_mint, create_token_account, deploy,
+    fetch_token_account_base, init_position, initialize_protocol, position_pda,
     reference_market_args, repay_ix, spl_token_interface, supply, supply_ix, withdraw_ix,
 };
 use anchor_lang::{InstructionData, ToAccountMetas};
@@ -133,134 +133,15 @@ fn wallet_with_ata(
     (wallet, ata)
 }
 
-// --- BORROW GATE: the single most important adversarial test in this phase ---
-
-// `borrow` is hard-gated: an otherwise well-formed borrow attempt, against a real market with real
-// supplied liquidity, must fail with exactly `OracleNotYetAvailable` -- never succeed, never fail
-// with any other error that might suggest a different, permissive code path was reached.
-#[test]
-fn borrow_is_hard_gated_returns_oracle_not_yet_available() {
-    let mut seeds = SeedGen::new();
-    let (mut svm, admin) = deploy(aegis::id(), program_bytes());
-    let fx = setup_market(&mut svm, &admin, &mut seeds);
-
-    // Real liquidity in the market -- if the gate were bypassable, this borrow would otherwise be
-    // perfectly satisfiable against free liquidity and min_debt.
-    let (lender, lender_ata) = wallet_with_ata(
-        &mut svm,
-        &admin,
-        fx.loan_mint,
-        fx.loan_token_program,
-        &mut seeds,
-        1_000_000_000,
-    );
-    let (_, lender_position) = init_position(&mut svm, &admin, fx.market, lender.pubkey());
-    supply(
-        &mut svm,
-        &lender,
-        fx.market,
-        lender_position,
-        fx.fee_position,
-        fx.loan_vault,
-        lender_ata,
-        fx.loan_mint,
-        fx.loan_token_program,
-        1_000_000_000,
-        0,
-    )
-    .expect("supply must succeed");
-
-    let (borrower, borrower_ata) = wallet_with_ata(
-        &mut svm,
-        &admin,
-        fx.loan_mint,
-        fx.loan_token_program,
-        &mut seeds,
-        0,
-    );
-    let (_, borrower_position) = init_position(&mut svm, &admin, fx.market, borrower.pubkey());
-
-    let ix = borrow_ix(
-        &borrower.pubkey(),
-        fx.market,
-        borrower_position,
-        fx.fee_position,
-        fx.loan_vault,
-        borrower_ata,
-        fx.loan_mint,
-        fx.loan_token_program,
-        100_000_000,
-        0,
-    );
-    let result = send(&mut svm, &borrower, &[], ix);
-    assert_aegis_error(&result, AegisError::OracleNotYetAvailable);
-
-    // Nothing changed: no tokens moved, no debt was recorded.
-    let position_after = fetch_position(&svm, &borrower_position);
-    assert_eq!(position_after.borrow_shares, 0);
-    let vault_after = fetch_token_account_base(&svm, &fx.loan_vault);
-    assert_eq!(
-        vault_after.amount, 1_000_000_000,
-        "no tokens must have left the vault"
-    );
-    let borrower_ata_after = fetch_token_account_base(&svm, &borrower_ata);
-    assert_eq!(
-        borrower_ata_after.amount, 0,
-        "the borrower must have received nothing"
-    );
-}
-
-// The gate also fires for the shares-given form, and regardless of the requested amount's size
-// relative to available liquidity (a request for 1 base unit is just as gated as a large one).
-#[test]
-fn borrow_is_hard_gated_regardless_of_form_or_size() {
-    let mut seeds = SeedGen::new();
-    let (mut svm, admin) = deploy(aegis::id(), program_bytes());
-    let fx = setup_market(&mut svm, &admin, &mut seeds);
-
-    let (borrower, borrower_ata) = wallet_with_ata(
-        &mut svm,
-        &admin,
-        fx.loan_mint,
-        fx.loan_token_program,
-        &mut seeds,
-        0,
-    );
-    let (_, borrower_position) = init_position(&mut svm, &admin, fx.market, borrower.pubkey());
-
-    // shares-given form.
-    let ix = borrow_ix(
-        &borrower.pubkey(),
-        fx.market,
-        borrower_position,
-        fx.fee_position,
-        fx.loan_vault,
-        borrower_ata,
-        fx.loan_mint,
-        fx.loan_token_program,
-        0,
-        1,
-    );
-    let result = send(&mut svm, &borrower, &[], ix);
-    assert_aegis_error(&result, AegisError::OracleNotYetAvailable);
-
-    // A tiny 1-unit assets-given request, on a fresh blockhash.
-    svm.expire_blockhash();
-    let ix2 = borrow_ix(
-        &borrower.pubkey(),
-        fx.market,
-        borrower_position,
-        fx.fee_position,
-        fx.loan_vault,
-        borrower_ata,
-        fx.loan_mint,
-        fx.loan_token_program,
-        1,
-        0,
-    );
-    let result2 = send(&mut svm, &borrower, &[], ix2);
-    assert_aegis_error(&result2, AegisError::OracleNotYetAvailable);
-}
+// NOTE: this file's two Phase 4 `borrow`-hard-gate tests
+// (`borrow_is_hard_gated_returns_oracle_not_yet_available`,
+// `borrow_is_hard_gated_regardless_of_form_or_size`) covered the unconditional
+// `OracleNotYetAvailable` gate that Phase 5 removed (`instruction-catalogue.md` §14,
+// `docs/phases/phase-05-oracle.md`) -- `borrow` now takes real price-update accounts and performs
+// real oracle-validated LTV-checked borrowing. Equivalent, stronger coverage (borrow against an
+// invalid/stale/wrong-owner oracle fails closed with no state change; a real borrow against a
+// valid oracle succeeds and respects max_ltv) lives in `tests/phase5_oracle_adversarial.rs` and
+// `tests/phase5_borrow_withdraw.rs`.
 
 // --- A-ACC-01 / T-11: duplicate mutable accounts ---
 

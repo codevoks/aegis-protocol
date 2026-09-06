@@ -279,6 +279,10 @@ fn withdraw_all_with_zero_debt() {
         owner_ata,
         sol_mint,
         spl_token_interface::ID,
+        // Debt-free withdrawal reads no oracle at all (E-08) -- placeholder pubkeys are never
+        // touched.
+        Pubkey::default(),
+        Pubkey::default(),
         amount,
     );
     result.expect("withdraw_collateral must succeed for a debt-free position");
@@ -376,6 +380,8 @@ fn close_position_requires_exact_zero_balances() {
         owner_ata,
         sol_mint,
         spl_token_interface::ID,
+        Pubkey::default(),
+        Pubkey::default(),
         amount,
     )
     .expect("withdraw_collateral must succeed");
@@ -495,6 +501,8 @@ fn custody_invariant_holds_across_multiple_positions() {
         owner_a_ata,
         sol_mint,
         spl_token_interface::ID,
+        Pubkey::default(),
+        Pubkey::default(),
         1_000_000_000,
     )
     .expect("partial withdrawal from position_a");

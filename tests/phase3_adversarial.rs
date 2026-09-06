@@ -5,16 +5,12 @@
 #![allow(clippy::result_large_err)]
 
 use aegis::error::AegisError;
-use aegis::state::Position;
 use aegis_test_kit::{
     assert_aegis_error, close_position, create_market, create_spl_mint, create_token_2022_mint,
     create_token_account, deploy, deposit_collateral, deposit_collateral_ix, fetch_position,
-    init_position, initialize_protocol, mint_to, position_pda, reference_market_args,
-    spl_token_2022_interface, spl_token_interface, withdraw_collateral, withdraw_collateral_ix,
-    Token2022Extension,
+    init_position, initialize_protocol, mint_to, reference_market_args, spl_token_2022_interface,
+    spl_token_interface, withdraw_collateral, withdraw_collateral_ix, Token2022Extension,
 };
-use anchor_lang::AccountSerialize;
-use solana_account::Account as RawAccount;
 use solana_instruction::Instruction;
 use solana_keypair::Keypair;
 use solana_message::{Message, VersionedMessage};
@@ -302,6 +298,8 @@ fn non_owner_withdraw_fails() {
         attacker_ata,
         fixture.collateral_mint,
         spl_token_interface::ID,
+        Pubkey::default(),
+        Pubkey::default(),
         1_000_000_000,
     );
     assert_aegis_error(&result, AegisError::NotPositionOwner);
@@ -489,6 +487,8 @@ fn market_is_not_writable_in_collateral_instructions() {
         ata,
         mint,
         spl_token_interface::ID,
+        Pubkey::default(),
+        Pubkey::default(),
         1,
     );
     let market_meta = withdraw_ix
@@ -502,87 +502,13 @@ fn market_is_not_writable_in_collateral_instructions() {
     );
 }
 
-// Debt-path hard gate (docs/phase-roadmap.md "Sequencing the oracle dependency"): a position with
-// any outstanding `borrow_shares` must be refused with `OracleNotYetAvailable`, never a permissive
-// or placeholder price path. `borrow_shares` cannot be set nonzero by any Phase 1-3 instruction, so
-// the state is injected directly via `svm.set_account` — the same legitimate fixture technique
-// already used by `attacker_owned_fake_protocol_account_is_rejected` (Phase 2).
-#[test]
-fn withdraw_with_outstanding_debt_returns_oracle_not_yet_available() {
-    let (mut svm, admin) = deploy(aegis::id(), program_bytes());
-    let fixture = setup_spl_fixture(&mut svm, &admin, 90);
-
-    let owner = Keypair::new_from_array([240u8; 32]);
-    svm.airdrop(&owner.pubkey(), 10_000_000_000)
-        .expect("airdrop to owner");
-    let (_, position_pubkey) = init_position(&mut svm, &admin, fixture.market, owner.pubkey());
-    deposit_collateral(
-        &mut svm,
-        &admin,
-        fixture.market,
-        position_pubkey,
-        fixture.collateral_vault,
-        fixture.depositor_ata,
-        fixture.collateral_mint,
-        spl_token_interface::ID,
-        5_000_000_000,
-    )
-    .expect("deposit must succeed");
-
-    let (_, bump) = position_pda(&fixture.market, &owner.pubkey());
-    let phantom_debt = Position {
-        market: fixture.market,
-        owner: owner.pubkey(),
-        supply_shares: 0,
-        borrow_shares: 1_000, // no Phase 1-3 instruction can ever produce this
-        collateral_amount: 5_000_000_000,
-        bump,
-        _reserved: [0u8; 32],
-    };
-    let mut data = Vec::new();
-    phantom_debt
-        .try_serialize(&mut data)
-        .expect("serialize phantom position");
-    let existing = svm.get_account(&position_pubkey).unwrap();
-    svm.set_account(
-        position_pubkey,
-        RawAccount {
-            lamports: existing.lamports,
-            data,
-            owner: aegis::id(),
-            executable: false,
-            rent_epoch: 0,
-        },
-    )
-    .expect("inject phantom-debt position fixture");
-
-    let owner_ata = create_token_account(
-        &mut svm,
-        &admin,
-        241,
-        fixture.collateral_mint,
-        owner.pubkey(),
-        spl_token_interface::ID,
-        &[],
-    );
-    let result = withdraw_collateral(
-        &mut svm,
-        &owner,
-        fixture.market,
-        position_pubkey,
-        fixture.collateral_vault,
-        owner_ata,
-        fixture.collateral_mint,
-        spl_token_interface::ID,
-        1_000_000_000,
-    );
-    assert_aegis_error(&result, AegisError::OracleNotYetAvailable);
-
-    // The failed attempt changed nothing.
-    let position_after = fetch_position(&svm, &position_pubkey);
-    assert_eq!(position_after.collateral_amount, 5_000_000_000);
-    assert_eq!(position_after.borrow_shares, 1_000);
-}
+// NOTE: the Phase 3/4 hard gate this test used to cover (`withdraw_collateral` on a debt-bearing
+// position unconditionally returning `OracleNotYetAvailable`) was removed in Phase 5 -- the
+// instruction now performs a real, oracle-validated post-withdrawal health check instead
+// (`instruction-catalogue.md` §11, `docs/phases/phase-05-oracle.md`). Equivalent, stronger
+// coverage (a debt-bearing withdrawal against an invalid/stale/wrong-owner price account fails
+// closed, and state is unchanged) now lives in `tests/phase5_oracle_adversarial.rs`
+// (`A-ORACLE-03`, `A-ORACLE-06`, `A-ORACLE-13`).
 
 // A-LIFE-02 / INV-LIFE-03: a closed position is fully defunded, cannot be reused while stale, and
 // can only ever be recreated empty by `init_position`.
@@ -627,6 +553,8 @@ fn closed_position_cannot_be_revived_with_stale_data() {
         owner_ata,
         fixture.collateral_mint,
         spl_token_interface::ID,
+        Pubkey::default(),
+        Pubkey::default(),
         1_000_000_000,
     )
     .expect("withdraw must succeed");

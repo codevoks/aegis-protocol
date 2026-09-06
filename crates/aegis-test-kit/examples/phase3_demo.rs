@@ -222,6 +222,9 @@ fn main() {
         spl_owner_ata,
         sol_mint,
         spl_token_interface::ID,
+        // Debt-free withdrawal reads no oracle at all (E-08, Phase 5) -- placeholders unused.
+        Pubkey::default(),
+        Pubkey::default(),
         spl_amount,
     )
     .expect("zero-debt withdrawal must succeed");

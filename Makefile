@@ -42,13 +42,13 @@ fuzz:
 bench:
 	@echo "not implemented until Phase 11 (performance)"
 
-## Phase 2 demo: protocol init, an SPL market, a Token-2022 market, positions, vault custody
-## evidence, and a rejection table for incompatible mints/parameters — see
-## docs/phases/phase-02-state.md "Demo". Zero-cost, offline, in-process LiteSVM.
-## The full lending/liquidation/bad-debt scenario in docs/zero-cost-demo.md §5 ships in Phase 13,
-## once those instructions exist.
+## Phase 3 demo: SPL and Token-2022 transfer-fee collateral deposits (requested vs. credited),
+## the INV-CUS-02 custody invariant after every step, a zero-debt withdrawal, and closing a
+## position with rent reclaimed — see docs/phases/phase-03-collateral.md "Demo". Zero-cost,
+## offline, in-process LiteSVM. Phase 2's own demo (protocol/market/position/custody scaffolding)
+## remains runnable directly: `cargo run -p aegis-test-kit --example phase2_demo`.
 demo: build
-	cargo run -p aegis-test-kit --example phase2_demo
+	cargo run -p aegis-test-kit --example phase3_demo
 
 ## UI against local Surfpool — Phase 9.
 app:

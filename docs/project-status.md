@@ -1,8 +1,8 @@
 # Aegis — Project Status
 
-**Last updated: 2026-09-06**
-**Current phase: Phase 5 — Oracle — COMPLETE**
-**Next phase: Phase 6 — Health, Liquidation & Bad Debt — NOT STARTED**
+**Last updated: 2026-09-11**
+**Current phase: Phase 6 — Health, Liquidation & Bad Debt — COMPLETE**
+**Next phase: Phase 7 — Token-2022 — NOT STARTED**
 
 > This file is the first thing any contributor or model reads after `AGENTS.md`. It must always
 > reflect reality. **"Implemented" never means "verified."** The five states below are tracked
@@ -35,7 +35,7 @@ rounded up.
 | 3 | Collateral flows | ✅ **COMPLETE** | `phase-03-collateral` |
 | 4 | Lending, borrowing & interest | ✅ **COMPLETE** | `phase-04-lending` |
 | 5 | Oracle | ✅ **COMPLETE** | `phase-05-oracle` |
-| 6 | Health, liquidation & bad debt | ⬜ NOT STARTED | — |
+| 6 | Health, liquidation & bad debt | ✅ **COMPLETE** | `phase-06-liquidation` |
 | 7 | Token-2022 | ⬜ NOT STARTED | — |
 | 8 | Composability | ⬜ NOT STARTED | — |
 | 9 | SDK, client & UI | ⬜ NOT STARTED | — |
@@ -67,6 +67,20 @@ accounts using the real SDK's own `AccountSerialize`/`AccountDeserialize` impls 
 provider and no mock program exist anywhere (ADR-0008). Full evidence is in **Phase 5 — evidence**
 below; Phase 4's own evidence is preserved unchanged in **Phase 4 — evidence**.
 
+**Phase 6 is complete.** `liquidate`, `absorb_bad_debt` and `withdraw_collateral_fees` exist
+on-chain. `aegis-math` gained `liquidation.rs` (close-factor/dust-rule `max_repay`, seizure, bonus,
+protocol cut, the collateral clamp with upward-rounded repay recomputation, and the alternate
+seize-specified input form — all pure, `no_std`, integer-only). `liquidate` enforces a **strict**
+`HF < WAD` liquidatability gate, validates the oracle for both assets before any state write
+(mirroring `borrow`'s INV-ORA-07 ordering), and settles exactly per `economic-model.md` §7.3 —
+the protocol's cut is taken from the bonus only and stays physically in the collateral vault,
+recorded in `market.collateral_fee_accrued`. `absorb_bad_debt` requires `position.collateral_
+amount == 0` exactly, reads no oracle, and is structurally unpausable; it burns the protocol's own
+`fee_position.supply_shares` before socializing any residual loss across the market's lenders, and
+moves no tokens. `withdraw_collateral_fees` lets the admin withdraw only `market.collateral_fee_
+accrued`, structurally incapable of reaching user collateral (`A-ADM-02`, the concrete proof of
+INV-ADM-01). Full evidence is in **Phase 6 — evidence** below.
+
 ## Component status
 
 | Component | IMPL | TEST | DEMO | DOC | COMMIT |
@@ -75,7 +89,7 @@ below; Phase 4's own evidence is preserved unchanged in **Phase 4 — evidence**
 | `aegis-math` — shares | ✅ | ✅ | ✅ | ✅ | ⬜ |
 | `aegis-math` — IRM/accrual | ✅ | ✅ | ✅ | ✅ | ⬜ |
 | `aegis-math` — health | ✅ | ✅ | ✅ | ✅ | ⬜ |
-| `aegis-math` — liquidation | ⬜ | ⬜ | ⬜ | ✅ | ⬜ |
+| `aegis-math` — liquidation | ✅ | ✅ | ✅ | ✅ | ⬜ |
 | `programs/aegis` — `ping` (toolchain proof only) | ✅ | ✅ | ⬜ | ✅ | ⬜ |
 | `Protocol` / `Market` / `Position` | ✅ | ✅ | ✅ | ✅ | ⬜ |
 | `initialize_protocol` / `create_market` / `init_position` | ✅ | ✅ | ✅ | ✅ | ⬜ |
@@ -84,9 +98,9 @@ below; Phase 4's own evidence is preserved unchanged in **Phase 4 — evidence**
 | Collateral instructions (`deposit_collateral`, real oracle-validated `withdraw_collateral`, `close_position`) | ✅ | ✅ | ✅ | ✅ | ⬜ |
 | Lend/borrow instructions (`supply`, `withdraw`, `repay`, `accrue_interest`, real oracle-validated `borrow`) | ✅ | ✅ | ✅ | ✅ | ⬜ |
 | Oracle (Pyth adapter, `oracle::require_valid_price`, O-1..O-11) | ✅ | ✅ | ✅ | ✅ | ⬜ |
-| Liquidation & bad debt | ⬜ | ⬜ | ⬜ | ✅ | ⬜ |
+| Liquidation & bad debt (`liquidate`, `absorb_bad_debt`, `withdraw_collateral_fees`) | ✅ | ✅ | ✅ | ✅ | ⬜ |
 | Governance & migrations | ⬜ | ⬜ | ⬜ | ✅ | ⬜ |
-| `aegis-test-kit` (mints, market/position lifecycle, user token accounts, invariant checker, borrow-state injection, `pyth_fixture` byte-exact `PriceUpdateV2` construction) | ✅ | ✅ | ✅ | ✅ | ⬜ |
+| `aegis-test-kit` (mints, market/position lifecycle, user token accounts, invariant checker, borrow-state injection, `pyth_fixture` byte-exact `PriceUpdateV2` construction, `liquidate`/`absorb_bad_debt`/`withdraw_collateral_fees` helpers) | ✅ | ✅ | ✅ | ✅ | ⬜ |
 | Invariant fuzzer | ⬜ | ⬜ | ⬜ | ✅ | ⬜ |
 | CU benchmarks | ⬜ | ⬜ | ⬜ | ✅ | ⬜ |
 | `labs/` (Anchor/native/Pinocchio) | ⬜ | ⬜ | ⬜ | ✅ | ⬜ |
@@ -201,7 +215,37 @@ test. `INV-SOLV-01` is marked **[GLOBAL]** in `invariants.md` — Phase 10's fuz
 per-instruction-sequence check; Phase 5 exercises it directly at both of its two call sites
 (`borrow`, debt-path `withdraw_collateral`).
 
-Still **0 of the 87 numbered `invariants.md` invariants assigned to Phases 6-13** are implemented
+Phase 6 is the first phase to test numbered invariants from `docs/invariants.md` §H (liquidation)
+and the Phase-6-assigned rows of §D (solvency) and §J (administrative safety), plus `INV-CUS-09`
+and `INV-RES-03`:
+
+| ID | Tested by |
+|---|---|
+| INV-LIQ-01 | `U-LIQ-02` (`liquidation::tests::u_liq_02_hf_equal_to_wad_is_not_liquidatable`, `tests/phase6_liquidation.rs::u_liq_02_hf_equal_to_wad_is_not_liquidatable_strict`) — `HF == WAD` rejected, `HF == WAD - 1` accepted |
+| INV-LIQ-02 | `P-LIQ-2` (`p_liq_2_seizure_never_exceeds_collateral`), `seizure_never_exceeds_collateral_amount`, `clamp_boundary_exact_equality_does_not_clamp` |
+| INV-LIQ-03 | `repay_never_exceeds_debt` (`aegis-math`), `U-LIQ-03` (`u_liq_03_and_05_collateral_clamp_and_full_seizure_with_remaining_debt`) |
+| INV-LIQ-04 | `U-LIQ-04` (`u_liq_04_dust_rule_forces_full_repayment`, `dust_rule_boundary_exactly_at_min_debt_vs_one_below` in `aegis-math`; `u_liq_04_dust_rule_forces_full_repayment_on_chain`, `u_liq_04_dust_rule_boundary_forces_full_when_remaining_would_be_below_min_debt` on-chain) |
+| INV-LIQ-05 | `P-LIQ-1` (`p_liq_1_health_improves_above_the_derived_threshold`) |
+| INV-LIQ-06 | `derived_liquidation_bound_rejects_plausible_but_unsafe_params` (Phase 2, unchanged) plus `P-LIQ-4` (`p_liq_4_reference_params_satisfy_full_liq_hf_bound`) |
+| INV-LIQ-07 | `U-LIQ-01` (`u_liq_01_worked_liquidation_example`, `u_liq_01_worked_example_on_chain` — exact §7.5 figures), `protocol_cut_never_exceeds_bonus_and_never_touches_base_seize` |
+| INV-LIQ-08 | `P-LIQ-3` (`p_liq_3_liquidation_is_profitable_when_not_clamped`) |
+| INV-LIQ-09 | `U-LIQ-06` (`u_liq_06_total_supply_assets_never_rises`) |
+| INV-SOLV-02 | `A-LIQ-01` (`a_liq_01_healthy_position_cannot_be_liquidated_and_nothing_mutates`) — full before/after byte-exact snapshots of market, position, both vaults, and every wallet ATA involved |
+| INV-SOLV-03 | `U-BD-01` (`u_bd_01_nonzero_collateral_is_rejected`, `u_bd_01_zero_borrow_shares_is_rejected`) |
+| INV-SOLV-04 | `absorb_bad_debt_moves_no_tokens_and_preserves_vault_reconciliation`, `assert_inv_cus_01` called after every `U-BD-02` scenario |
+| INV-SOLV-05 | `I-ISO-01` (`i_iso_01_bad_debt_in_market_a_leaves_market_b_completely_untouched`) — full byte-exact snapshots of Market B's market/position/vault accounts before and after Market A's liquidation and bad-debt absorption |
+| INV-SOLV-06 | `U-BD-02` (`u_bd_02_fee_shares_exceed_loss_fully_absorbed_by_protocol`, `u_bd_02_fee_shares_short_residual_is_socialized`, plus the exact/one-unit-short/no-fee-shares boundary variants) |
+| INV-SOLV-07 | `U-BORROW-02` (Phase 4, unchanged) plus `U-LIQ-04`'s dust-rule tests (the liquidation-side enforcement) |
+| INV-ADM-01 | `A-ADM-02` (`a_adm_02_admin_cannot_withdraw_user_collateral`) — both a `protocol_cut + 1` attempt and a whole-vault-balance attempt, with user collateral and the custody invariant proven byte/value-unchanged |
+| INV-ADM-08 | `A-ADM-02` (same test) plus `withdraw_collateral_fees_happy_path`'s positive-path bound check |
+| INV-CUS-09 | `U-LIQ-01`'s exact `collateral_fee_accrued` figure (§7.5: `47_477_848`) and `A-ADM-02`'s real-liquidation-derived `protocol_cut` — `collateral_fee_accrued` is never written anywhere outside `liquidate` (grep-verifiable: `programs/aegis/src/instructions/liquidate/liquidate.rs` and `admin/withdraw_collateral_fees.rs`, which only decrements it, are the only two write sites) |
+| INV-RES-03 | `A-PAR-02` (`a_par_02_no_writable_account_shared_between_two_markets`) — the writable-account sets of `Liquidate`/`AbsorbBadDebt`/`WithdrawCollateralFees` for two independent markets are asserted disjoint via their actual generated `Vec<AccountMeta>`, not by source inspection |
+
+`INV-LIQ-01..09`, `INV-SOLV-02..07`, `INV-ADM-01/08`, `INV-CUS-09` and `INV-RES-03` are all
+formally assigned to Phase 6 in `docs/invariants.md`'s per-phase column; every one is mapped above
+to a concrete, currently-passing test.
+
+Still **0 of the 87 numbered `invariants.md` invariants assigned to Phases 7-13** are implemented
 or tested — expected at this point; see `docs/invariants.md` for the full per-phase assignment.
 
 ---
@@ -364,6 +408,342 @@ transfers `loan_vault → owner`, account-model.md §6.3's fourth custody path) 
 "`borrow.rs` must never call a transfer helper while hard-gated" check was removed, since the gate
 it protected no longer exists. This is the check tracking reality, not a weakening — the six-path
 custody enumeration in `account-model.md` §6.3 is unchanged.
+
+No ADR was added or changed in Phase 6. `liquidate`, `absorb_bad_debt` and
+`withdraw_collateral_fees` implement `economic-model.md` §7-8 and `instruction-catalogue.md`
+§17-19 exactly as frozen; no implementation surprise required deviating from either document. One
+more guard-script update, same pattern as Phase 5's: `scripts/check-collateral-transfer-paths.sh`'s
+allowlists gained `programs/aegis/src/instructions/liquidate/liquidate.rs` (both directions — the
+only instruction that moves tokens both ways) and
+`programs/aegis/src/instructions/admin/withdraw_collateral_fees.rs` (outbound), completing all six
+of `account-model.md` §6.3's enumerated custody paths. `liquidate`'s test-kit transaction builder
+needed a higher compute-unit budget than `borrow`/`repay`/`withdraw_collateral`
+(`LIQUIDATE_COMPUTE_UNIT_LIMIT = 800_000` vs. `HIGHER_COMPUTE_UNIT_LIMIT = 400_000`, measured
+directly against the collateral-clamp path during authoring) — a resource-allocation fact recorded
+the same way Phase 5 recorded `borrow`'s own CU finding, not a security-relevant change; `INV-RES-01`
+remains explicitly Phase 11 (Performance) scope.
+
+---
+
+## Phase 6 — evidence
+
+### 1. Liquidation math (`crates/aegis-math/src/liquidation.rs`)
+
+Implements `economic-model.md` §7.1-§7.3 exactly: `max_repay` (close-factor/full-liquidation split
+plus the dust rule), `compute_liquidation_by_repay` (the primary form, including the §7.2
+collateral clamp with upward-rounded repay recomputation), and `compute_liquidation_by_seize` (the
+alternate seize-specified input form `instruction-catalogue.md` §17 requires, sharing the identical
+ceil-rounded "seize → repay" inversion the clamp itself uses — there is exactly one such formula in
+the crate). `is_liquidatable(hf) = hf < WAD` is the **only** eligibility comparison in the module,
+and it is strict by construction (`U-LIQ-02`, `is_liquidatable_never_uses_inclusive_comparison`).
+
+### 2. `liquidate` (`instructions/liquidate/liquidate.rs`)
+
+Sequencing mirrors `borrow`'s INV-ORA-07 precedent exactly: `require_valid_price` for both feeds is
+the first fallible operation, strictly before `accrue_mut` or any other state write, so a failed
+oracle check leaves nothing modified (`A-LIQ-01`, oracle-adversarial re-runs below). After accrual,
+`HF < WAD` is checked **strictly** (`INV-LIQ-01`/`INV-SOLV-02`) before any liquidation math runs.
+Settlement follows `economic-model.md` §7.3 verbatim: `repay_shares` from `repay_assets` floored
+then clamped to `position.borrow_shares`; `total_supply_assets` is deliberately never touched
+(`INV-LIQ-09`); `collateral_fee_accrued` increases by exactly `protocol_cut`, the only write site
+for that field anywhere in the program (`INV-CUS-09`); net seized collateral is transferred to the
+liquidator, signed by the `Market` PDA, while the protocol's cut stays physically in the vault. No
+owner signature is required (self-liquidation is permitted, `U-LIQ-07`).
+
+### 3. `absorb_bad_debt` (`instructions/liquidate/absorb_bad_debt.rs`)
+
+No price-update account anywhere in its `Accounts` struct — structurally impossible to make
+oracle-dependent. No pause check exists in the handler at all (same precedent as `repay`/
+`deposit_collateral`). Preconditions are exact: `collateral_amount == 0` (no dust tolerance) and
+`borrow_shares > 0`. `fee_position` is mandatory and PDA-constrained to `PDA(market,
+market.fee_recipient)`, identical to every other instruction's own fee-position handling — a
+substituted account fails Anchor's seeds constraint before the handler body ever runs
+(`fee_position_cannot_be_substituted_with_another_account`). Settlement is `economic-model.md`
+§8.2's exact algorithm: `absorbed_by_protocol = min(bad_assets, fee_assets)`, `burn_shares =
+to_shares_up(absorbed_by_protocol, ...)` clamped to `fee_position.supply_shares`, then both
+`total_supply_assets` and `total_borrow_assets` fall by exactly `bad_assets` — no CPI, no token
+movement anywhere in the instruction.
+
+### 4. `withdraw_collateral_fees` (`instructions/admin/withdraw_collateral_fees.rs`)
+
+Admin-only (`has_one = admin` against `Protocol`), bounded by `amount <= market.
+collateral_fee_accrued` — the sole precondition standing between the admin and the vault, and the
+concrete mechanism behind INV-ADM-01/INV-ADM-08. No `Position` account appears anywhere in this
+instruction's account list, so there is nothing to read a user's balance from even if the bound
+were somehow bypassed.
+
+### 5. Worked example (`U-LIQ-01`) — exact `economic-model.md` §7.5 figures
+
+Both the pure-math test (`liquidation::tests::u_liq_01_worked_liquidation_example`) and the full
+on-chain instruction test (`tests/phase6_liquidation.rs::u_liq_01_worked_example_on_chain`, real
+`supply`/`deposit_collateral`/`borrow`/`liquidate` transactions through LiteSVM) assert every
+documented intermediate and final value exactly:
+
+| Quantity | §7.5 value | Asserted |
+|---|---|---|
+| `repay_assets` | 900.000000 USDC | ✅ both tests |
+| `base_seize` | 9.495569620 SOL | ✅ pure-math test |
+| `total_seize` | 9.970348101 SOL | ✅ both tests |
+| `bonus_amount` | 0.474778481 SOL | ✅ both tests |
+| `protocol_cut` | 0.047477848 SOL | ✅ both tests |
+| `to_liquidator` | 9.922870253 SOL | ✅ both tests |
+| remaining collateral | 0.029651899 SOL | ✅ both tests |
+| remaining debt | 0 | ✅ both tests |
+
+### 6. Collateral clamp (`U-LIQ-03`) — concrete evidence and rounding
+
+`liquidation::tests::u_liq_03_and_05_collateral_clamp_recomputes_repay_upward_and_leaves_remaining_debt`
+and `tests/phase6_liquidation.rs::u_liq_03_and_05_collateral_clamp_and_full_seizure_with_remaining_debt`
+reduce available collateral to 9 SOL (insufficient for the naive 9.970348101 SOL seizure) and
+assert: `total_seize` clamps to exactly 9.000000000 SOL (INV-LIQ-02, exact equality at the bound,
+not merely `<=`); `repay_assets` recomputes DOWN from the requested 900 USDC to **812.408947
+USDC**, via the identical ceil-rounded formula the clamp shares with `compute_liquidation_by_seize`
+(`u_liq_03_clamp_repay_matches_independent_reinversion` proves the two agree exactly); the
+liquidator still pays the full recomputed amount, never less, because every step of that
+recomputation ceils. `clamp_boundary_exact_equality_does_not_clamp` pins the boundary itself: a
+naive seizure exactly equal to available collateral does NOT clamp; one unit less does. The
+resulting position (`collateral_amount == 0`, `borrow_shares > 0`) is then fed directly into a real
+`absorb_bad_debt` call in the same test, proving the bridge end-to-end.
+
+### 7. Close-factor / dust behavior (`U-LIQ-04`)
+
+`max_repay` applies the close-factor split (`HF < full_liq_hf` → 100%; else `close_factor × debt`)
+and then the dust rule (a resulting remainder strictly inside `(0, min_debt)` forces full
+repayment instead). `dust_rule_boundary_exactly_at_min_debt_vs_one_below` pins the exact boundary:
+remaining `== min_debt` does not force dust; remaining `== min_debt - 1` does. On-chain,
+`u_liq_04_dust_rule_boundary_forces_full_when_remaining_would_be_below_min_debt` proves the concrete
+effect by requesting an amount (10 USDC) that STRICTLY EXCEEDS the plain close-factor cap
+(9.999999 USDC) and showing it succeeds only because the dust rule raised `max_repay` to the full
+debt.
+
+### 8. Property tests (`P-LIQ-1..4`) — results and assumptions
+
+All four live in `crates/aegis-math/tests/liquidation_property.rs` (512 cases each,
+`proptest`), documented per-test with their construction and assumptions:
+
+| ID | Result | Assumption stated in the test |
+|---|---|---|
+| `P-LIQ-1` | ok — HF strictly improves for ANY non-clamped repay amount, not merely a full liquidation | Excludes the clamp path by construction (a distinct, documented claim from `P-LIQ-2`); tests both the full and close-factor branches |
+| `P-LIQ-2` | ok — seizure never exceeds collateral, across random (including clamp-triggering) states | None beyond `INV-LIQ-06`'s own config bound |
+| `P-LIQ-3` | ok — profitable whenever `HF < WAD` and the clamp is not hit | `liq_bonus > 0` stated explicitly ("a zero-bonus market has no liquidation incentive by design") |
+| `P-LIQ-4` | ok — reference params satisfy `full_liq_hf (0.95) >= LT·(1+b) (0.84)` | Deterministic check against the documented reference parameter set, not a generated property |
+
+### 9. `liquidate` — instruction/account/oracle/custody behavior
+
+14 accounts, matching `instruction-catalogue.md` §17 exactly (no `protocol` account — same
+precedent `borrow`/`withdraw_collateral`/`supply` already established: pause instructions do not
+exist until Phase 12, so nothing can ever set a pause bit, and adding the account now would be dead
+code). Oracle: `require_valid_price` for both feeds, first fallible operation. Custody: seizure and
+repayment both go through the shared `token::transfer::{transfer_checked_in,
+transfer_checked_out}` helpers exclusively (`scripts/check-collateral-transfer-paths.sh`), signed
+by the `Market` PDA for the outbound leg, pinned mint/token-program throughout.
+
+### 10. Bad debt — absorption logic and zero-collateral requirement
+
+See §3 above. `U-BD-01` (`tests/phase6_bad_debt.rs::u_bd_01_nonzero_collateral_is_rejected`,
+`u_bd_01_zero_borrow_shares_is_rejected`) proves both halves of the precondition independently,
+including that even 1 unit of collateral blocks absorption — no dust exception.
+
+### 11. First loss — concrete protocol-fee-shares-first evidence
+
+`tests/phase6_bad_debt.rs`'s `U-BD-02` suite constructs real `fee_position.supply_shares` (not a
+fixture — minted via the identical accounting a real `supply()` CPI would produce, backed by real
+tokens in the vault) and a `bad_assets` figure relative to the fee position's own recoverable
+value, then asserts:
+
+| Scenario | Result |
+|---|---|
+| Fee shares exceed the loss (E-17) | Fully absorbed by the protocol; `total_supply_assets` falls by exactly `bad_assets`, lenders' pro-rata share price is otherwise undiluted |
+| Fee shares fall short | `fee_position.supply_shares` driven to exactly 0 (fully exhausted) before any residual is socialized |
+| Fee shares exactly cover the loss (boundary) | `fee_position` left with ~0 recoverable value (≤ 1 base unit, from `to_shares_up`'s ceil rounding) |
+| Fee shares one unit short (boundary) | `fee_position` fully exhausted (0 shares) |
+| No fee shares at all | `absorbed_by_protocol == 0`; the entire loss is socialized |
+
+`tests/phase6_admin.rs::i_iso_01_bad_debt_in_market_a_leaves_market_b_completely_untouched` and the
+full lifecycle test (`tests/phase6_integration.rs`) both show the same first-loss ordering against
+a REAL, interest-accrual-derived fee position, not a constructed one.
+
+### 12. Cross-market isolation (`I-ISO-01`) and no shared writable state (`A-PAR-02`)
+
+`I-ISO-01`: two independent markets (same mint pair, distinct `config_id` — the hardest case, since
+a bug that accidentally shared a vault or a totals field would only be caught here) are created;
+Market B receives real lender/borrower activity; Market A is driven through a full real borrow →
+crash → clamped liquidation → `absorb_bad_debt` cycle; every one of Market B's accounts (market,
+fee position, both real positions, both vaults) is proven **byte-identical** before and after, not
+merely "logically unaffected." `A-PAR-02`: the actual generated `Vec<AccountMeta>` for `Liquidate`/
+`AbsorbBadDebt`/`WithdrawCollateralFees` against both markets are collected and their writable-only
+subsets asserted disjoint; `protocol` (the one account genuinely shared) is confirmed read-only in
+every one of them.
+
+### 13. Non-custodial admin proof (`A-ADM-02`)
+
+`tests/phase6_admin.rs::a_adm_02_admin_cannot_withdraw_user_collateral`: a real user deposits real
+collateral; a real liquidation accrues a real `collateral_fee_accrued`. Two attack attempts —
+`protocol_cut + 1`, and the entire vault balance (user collateral plus the cut) — both fail with
+`InsufficientCollateralFees`; the user's `Position.collateral_amount`, the vault's raw balance, and
+`INV-CUS-02` are all proven completely unchanged after both attempts. A final legitimate withdrawal
+of exactly `protocol_cut` still succeeds, proving the rejections were about the amount, not a
+broken instruction. This is the concrete, portfolio-grade evidence for `INV-ADM-01`.
+
+### 14. Oracle adversarial re-run against `liquidate`
+
+`tests/phase6_liquidation.rs` re-runs the O-1..O-11 failure matrix against `liquidate` specifically
+(not merely relying on the shared `require_valid_price` guard's `borrow` coverage): stale price,
+wrong owner, wrong feed ID, partial verification, excessive confidence, future publish time, zero
+price, and duplicate price accounts — each asserting the identical, specific `AegisError` `borrow`'s
+own Phase 5 suite established for the same check. `A-LIQ-01` additionally proves a healthy-position
+rejection leaves market, position, both vaults, and every wallet ATA involved byte-identical.
+
+### 15. Tests — commands actually run and results
+
+```
+$ cargo test --workspace
+```
+
+New Phase 6 test files and counts (all currently passing, part of the 219 total below):
+
+| File | Tests |
+|---|---|
+| `crates/aegis-math/src/liquidation.rs` (unit, inline) | 16 |
+| `crates/aegis-math/tests/liquidation_property.rs` | 4 |
+| `tests/phase6_liquidation.rs` | 17 |
+| `tests/phase6_bad_debt.rs` | 13 |
+| `tests/phase6_admin.rs` | 5 |
+| `tests/phase6_integration.rs` | 1 |
+
+Full workspace count (every `test result: ok.` line summed, unedited transcript):
+
+```
+32 + 55 + 1 + 4 + 3 + 6 + 4 + 3 + 8 + 5 + 9 + 10 + 5 + 8 + 9 + 21 + 5 + 13 + 17 + 1 = 219
+```
+
+(the three `Doc-tests` crates contribute 0 each). **219 tests total, 0 failures.**
+
+### 16. Demo
+
+```
+$ make demo
+anchor build
+cargo run -p aegis-test-kit --example phase6_demo
+```
+
+Full transcript (abbreviated to the load-bearing lines; every figure below was printed by the
+actual run, not reconstructed):
+
+```
+=== 3. Borrower A deposits 10 SOL, borrows 900 USDC at SOL=$150.00 ===
+  borrowed 900.000000 USDC; health factor 1.3333 (healthy)
+
+=== 11. SOL crashes to $95.00 +/- $0.20 -- Borrower A becomes liquidatable ===
+  health factor now 0.8424 (< 1.0, and < full_liq_hf 0.95: full liquidation permitted)
+
+=== 12. Liquidator A repays the full 900 USDC debt ===
+  repay_assets:      900.000000 USDC
+  total_seize:       9.970348101 SOL (base + bonus)
+  bonus_amount:      0.474778481 SOL
+  protocol_cut:      0.047477848 SOL (from the bonus only)
+  to_liquidator:     9.922870253 SOL
+  remaining collateral on A: 0.029651899 SOL
+  remaining debt on A:       0 (fully repaid)
+  INV-LIQ-*, INV-CUS-01, INV-CUS-02: hold
+
+=== Time passes: 180 days of interest accrue on Borrower B's debt ===
+  fee_position.supply_shares after accrual: 1658966659717 (real protocol fee shares, not a fixture)
+
+=== 13. SOL crashes to $40.00 -- Borrower B liquidated to zero collateral, bad debt created ===
+  Borrower B's accrued debt just before the crash: 916.798682 USDC
+  Borrower B collateral after liquidation: 0.000000000 SOL (fully seized -- the clamp fired)
+  Borrower B remaining debt: 535.846301 USDC (bad debt -- collateral exhausted)
+
+=== 14. absorb_bad_debt -- protocol fee shares absorb the loss first ===
+  bad_assets (total loss recognized):       535.846301 USDC
+  protocol fee shares burned:                1658966659717 -> 987557 (first-loss)
+  total_supply_assets:                       1216.798682 USDC -> 680.952381 USDC
+  INV-CUS-01, INV-SOLV-04: hold exactly -- no tokens moved
+
+=== 15. Lender withdraws all shares -- realizing the socialized residual loss ===
+  lender originally supplied: 1200.000000 USDC
+  lender's redeemable value now: 680.952380 USDC (LESS than principal)
+  lender's loan-asset wallet balance after full withdrawal: 680.952380 USDC
+  realized shortfall vs. original principal: 519.047620 USDC
+
+=== 16. Admin withdraws the protocol's own accrued collateral fee ===
+  admin withdrew 0.095096895 SOL of protocol-owned collateral fees
+
+=== Final invariant report ===
+  INV-CUS-01: holds
+  INV-CUS-02: holds
+```
+
+Uses `economic-model.md` §4.1's actual documented reference IRM parameters (not the shared
+`reference_market_args()` test fixture, which deliberately zeroes the IRM slopes for tests that
+don't care about accrual) so the 180-day warp produces genuine, nonzero interest and a genuine,
+nonzero protocol fee — not a fixture standing in for one.
+
+### 17. Regression — prior-phase guarantees re-run
+
+```
+$ cargo fmt --all -- --check         # clean
+$ cargo clippy --workspace --all-targets -- -D warnings   # clean, zero warnings
+$ for f in scripts/check-*.sh; do bash "$f"; done
+check-collateral-transfer-paths: OK — vault token movement goes through exactly the shared
+  helpers, from exactly their enumerated call sites  (allowlist updated for liquidate/
+  withdraw_collateral_fees, see "Current architectural decisions" above)
+check-no-close: OK
+check-no-dup: OK
+check-no-float: OK
+check-no-init-if-needed: OK
+check-no-slot-time: OK
+check-overflow-checks: OK
+$ anchor build --ignore-keys          # succeeds, IDL regenerated (15 instructions, 14 events)
+$ cargo test --workspace              # 219 passed, 0 failed (see §15)
+```
+
+Every Phase 1-5 test file passes completely unmodified — this phase added new files
+(`crates/aegis-math/src/liquidation.rs`, `crates/aegis-math/tests/liquidation_property.rs`,
+`programs/aegis/src/instructions/liquidate/{mod,liquidate,absorb_bad_debt}.rs`,
+`programs/aegis/src/instructions/admin/withdraw_collateral_fees.rs`, four `tests/phase6_*.rs`
+files, `crates/aegis-test-kit/examples/phase6_demo.rs`) and additive changes to shared files
+(`error.rs`, `events.rs`, `guards.rs`, `instructions/{admin,liquidate}/mod.rs`, `lib.rs` in both
+`programs/aegis` and `crates/aegis-test-kit`, `crates/aegis-test-kit/src/market.rs`,
+`scripts/check-collateral-transfer-paths.sh`, `Makefile`) — no existing test, assertion, or
+error mapping was weakened, removed, or had its expected result changed.
+
+### 18. Deviations
+
+None. No frozen document was edited. No ADR was written — none was needed (see "Current
+architectural decisions" above for the two implementation-level facts recorded there: the guard-
+script allowlist update and `liquidate`'s own compute-unit budget, neither an architectural or
+economic deviation).
+
+### 19. Security self-audit
+
+| Question | Answer |
+|---|---|
+| Can `HF == WAD` be liquidated? | No — `is_liquidatable` is `hf < WAD`, strict; `U-LIQ-02` proves the exact boundary in both directions on-chain. |
+| Can liquidation repay more than debt? | No — `max_repay <= debt_assets` always (close-factor branch is `floor(debt × cf)` with `cf <= WAD`; full branch IS `debt_assets`); the clamp path additionally `min()`s with `debt_assets` explicitly. |
+| Can it seize more collateral than exists? | No — the clamp sets `total_seize = collateral_amount` exactly when the naive figure would exceed it; `P-LIQ-2` and `seizure_never_exceeds_collateral_amount` prove this across many states. |
+| Can clamp rounding favor the liquidator? | No — every step of the clamp's repay recomputation (`seize_to_repay`) ceils; `u_liq_03_clamp_repay_matches_independent_reinversion` proves the applied `repay_assets` matches an independent re-derivation from the clamped `total_seize` exactly. |
+| Can the protocol cut touch principal-equivalent collateral? | No — `protocol_cut = floor(bonus_amount × liq_protocol_fee / WAD)`, computed from `bonus_amount` alone; `protocol_cut_never_exceeds_bonus_and_never_touches_base_seize` asserts `to_liquidator >= base_seize` always. |
+| Can the protocol cut leave custody accounting inconsistent? | No — `collateral_fee_accrued` increases by exactly the amount that stays in the vault (`to_liquidator = total_seize - protocol_cut` is the only amount transferred out); `INV-CUS-02` holds exactly in every test. |
+| Can a healthy position mutate before rejection? | No — `A-LIQ-01` full before/after byte-exact snapshots of market, position, both vaults, and every wallet ATA prove zero mutation. |
+| Can invalid oracle data mutate state? | No — oracle validation is the first fallible statement in `handler`, before `accrue_mut` or any account write, identical ordering to `borrow`'s own `A-ORACLE-13`-proven guarantee. |
+| Can a liquidator spoof the vault/mint/token program? | No — PDA-seeded + `address =`/`has_one` constraints on every account, identical pattern to every prior phase's instructions. |
+| Can a liquidator bypass the close factor? | No — `repay_exceeding_max_repay_is_rejected` proves `max_repay + 1` fails; the dust-rule tests prove the bound itself is computed correctly. |
+| Can dust debt remain when full liquidation should trigger? | No — the dust rule forces `max_repay` to the full debt whenever a partial repay would leave `(0, min_debt)`; boundary-pinned in both directions. |
+| Can bad debt be absorbed while collateral remains? | No — `U-BD-01` proves even 1 unit of collateral blocks it. |
+| Can `fee_position` be omitted or substituted? | No — mandatory, PDA-constrained account; `fee_position_cannot_be_substituted_with_another_account` proves a non-canonical account is rejected before the handler runs, and the position is left with its debt unabsorbed. |
+| Can lender loss happen before protocol fee first-loss? | No — `absorbed_by_protocol = min(bad_assets, fee_assets)` is computed and applied before the socialization step in every `U-BD-02` scenario, including the exact-boundary and one-unit-short cases. |
+| Can bad-debt absorption depend on the oracle? | No — no price-update account exists anywhere in `AbsorbBadDebt`'s account list; `absorb_bad_debt_succeeds_with_no_oracle_posted_anywhere` proves it with literally no price posted in the whole `LiteSVM` instance. |
+| Can pause block bad-debt cleanup? | No — `absorb_bad_debt_ignores_forced_pause_bits` forces both `Market.paused` and `Protocol.paused` to `0b1111` via direct state injection (the only way to test this before Phase 12's pause instructions exist) and proves absorption still succeeds. |
+| Can the admin withdraw user collateral? | No — `A-ADM-02`, the flagship proof (§13 above). |
+| Can Market A's loss affect Market B? | No — `I-ISO-01`, byte-exact evidence (§12 above). |
+| Can shared global writable state break isolation? | No — `A-PAR-02` proves the writable-account sets of every Phase 6 instruction are disjoint across two markets, and that the one genuinely shared account (`protocol`) is read-only. |
+| Are all rounding directions exact? | Yes — `U-LIQ-01` matches `economic-model.md` §7.5 bit-for-bit; `U-ROUND-13/14/15` (`crates/aegis-math/tests/rounding_law.rs`, pre-existing since Phase 4/5) pin the three liquidation-specific rounding rows individually. |
+| Did Phase 8 callback/Jupiter/bot logic accidentally enter this phase? | No — `grep -ri "jupiter\|callback\|flash" programs/aegis/src` returns nothing; `liquidate`'s dual input form (`repay_assets`/`seize_collateral`) is a pure internal math inversion with no external CPI, exactly as `instruction-catalogue.md` §17 specifies for Phase 6 (the callback itself is explicit Phase 8 non-scope). |
+
+Every Phase-6-scoped question above is answered "no attack succeeds" / "yes, correctly" with a
+named, currently-passing test.
 
 ---
 

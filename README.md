@@ -2,20 +2,23 @@
 
 **A risk-first, isolated-market, overcollateralized lending protocol on Solana.**
 
-> **STATUS: PHASE 5 — ORACLE. NO LIQUIDATION OR BAD-DEBT LOGIC EXISTS.**
-> Aegis is under construction. Phase 4 added the economic core on top of Phase 3's custody flows:
-> `supply`/`withdraw` (share-based accounting with virtual-offset inflation defense), `repay`
-> (no oracle, no owner signature, unpausable, clamped to actual debt), and permissionless
-> `accrue_interest` (utilization-driven piecewise-linear rates, Taylor-series compounding,
-> protocol fees minted as supply shares). Phase 5 adds the real oracle: `programs/aegis/src/
-> oracle` implements checks O-1..O-11 against the real `pyth-solana-receiver-sdk` 2.0.0
-> ([ADR-0008](docs/adr/0008-oracle-abstraction-no-mock-program.md) — no mock provider, no mock
-> program, ever), and the Phase 3/4 hard gates are removed: `borrow` and the debt path of
-> `withdraw_collateral` are now real, oracle-validated, LTV-checked instructions that fail closed
-> on any oracle failure. Risk-reducing operations (`deposit_collateral`, `repay`, debt-free
-> `withdraw_collateral`) still require no oracle at all. There is still no health-factor-driven
-> liquidation or bad-debt socialization — those begin at Phase 6. See
-> [`docs/project-status.md`](docs/project-status.md) for the authoritative state of every
+> **STATUS: PHASE 6 — HEALTH, LIQUIDATION AND BAD DEBT.**
+> Aegis is under construction. Phase 5 added the real oracle (`programs/aegis/src/oracle`, checks
+> O-1..O-11 against the real `pyth-solana-receiver-sdk` 2.0.0 —
+> [ADR-0008](docs/adr/0008-oracle-abstraction-no-mock-program.md) — no mock provider, ever) and
+> made `borrow`/debt-bearing `withdraw_collateral` real, oracle-validated, LTV-checked
+> instructions. Phase 6 adds `liquidate`, `absorb_bad_debt` and `withdraw_collateral_fees`:
+> `crates/aegis-math/src/liquidation.rs` implements the close-factor/dust-rule `max_repay`,
+> seizure, bonus, protocol cut and the collateral clamp with upward-rounded repay recomputation
+> exactly per `economic-model.md` §7, with a **strict** `HF < WAD` liquidatability gate (`HF ==
+> WAD` is never liquidatable). Bad debt is recognized once a position's collateral is fully
+> exhausted (`collateral_amount == 0` exactly): protocol fee shares are burned first, and only the
+> residual is socialized across the market's lenders — permissionlessly, with no oracle dependency
+> and no pause path, ever. `withdraw_collateral_fees` lets the admin withdraw only the protocol's
+> own accrued collateral fee, structurally bounded so it can never reach user collateral
+> (`A-ADM-02`, the concrete proof of INV-ADM-01). Cross-market isolation (`I-ISO-01`) and the
+> absence of any shared writable account between markets (`A-PAR-02`) are both directly tested.
+> See [`docs/project-status.md`](docs/project-status.md) for the authoritative state of every
 > component.
 
 ---
@@ -93,37 +96,33 @@ Native Solana Rust and Pinocchio appear in scoped, benchmarked labs — not in p
 
 ## Quickstart
 
-**Right now (Phase 5):** on top of everything Phase 2/3/4 shipped, `programs/aegis` implements the
-real oracle: `oracle::require_valid_price` enforces checks O-1..O-11 (owner, discriminator, feed
-identity, full verification, staleness in unix seconds, future-skew, price positivity, confidence
-bound, sanity bounds, exponent-safe scaling, distinct feed accounts) against real
-`pyth-solana-receiver-sdk` 2.0.0 `PriceUpdateV2` accounts — an account read, never a CPI, so the
-Pyth program is never deployed. `borrow` is now real: oracle-validated, accrual-aware, and
-LTV-checked (`debt_value <= collateral_value * max_ltv / WAD`, collateral priced at the confidence
-lower bound floored, debt at the upper bound ceiled). `withdraw_collateral`'s debt path now
-performs the same post-withdrawal health check; a debt-free withdrawal still reads no oracle at
-all. `repay`/`deposit_collateral`/`supply`/`withdraw` remain fully oracle-independent — proven by
-`A-ORACLE-01`/`A-ORACLE-02` against a maximally broken oracle. `A-SHARE-01` demonstrates the
-first-depositor share-inflation attack succeeding without the virtual offsets and becoming a net
-*loss* for the attacker with them. There is still no health-factor-driven liquidation or bad debt,
-and no SDK/app yet.
+**Right now (Phase 6):** on top of everything Phase 2-5 shipped, `programs/aegis` implements
+`liquidate` (strict `HF < WAD`; close-factor/dust-rule `max_repay`; seizure with the collateral
+clamp; the liquidation bonus; the protocol's cut taken from the bonus only, never from
+principal-equivalent collateral), `absorb_bad_debt` (permissionless, no oracle, unpausable,
+requires `collateral_amount == 0` exactly; burns the protocol's own fee shares before socializing
+any residual across lenders), and `withdraw_collateral_fees` (admin withdrawal bounded by
+`market.collateral_fee_accrued`, structurally unable to reach user collateral). Self-liquidation is
+permitted and proven economically unprofitable versus a plain `repay` (`U-LIQ-07`). Cross-market
+isolation is proven directly: bad debt recognized in one market leaves a second, independent
+market byte-identical (`I-ISO-01`), and no writable account is shared between the two for any
+Phase 6 instruction (`A-PAR-02`). There is still no SDK/app yet.
 
 ```bash
 make setup   # verify the pinned toolchain (Solana CLI, Anchor, Surfpool, Node) is installed
 make build   # anchor build — compiles `programs/aegis` and generates its IDL
 make test    # cargo test --workspace — offline, no network, no secrets (the load-bearing command)
-make demo    # borrow succeeds against a real, valid oracle price; the oracle goes stale so borrow
-             # and debt-bearing withdraw_collateral fail closed while repay and deposit_collateral
-             # keep working; the oracle recovers at a new price and the recomputed health factor
-             # is printed — offline against an in-process LiteSVM, byte-exact PriceUpdateV2
-             # fixtures via the real pyth-solana-receiver-sdk, no Hermes
-             # (see docs/phases/phase-05-oracle.md "Demo")
+make demo    # SOL crashes to $95.00: a position is liquidated for the exact economic-model.md
+             # §7.5 figures (seizure, bonus, protocol cut). A second position is crashed to
+             # $40.00, its collateral fully seized by the clamp with debt remaining; the resulting
+             # bad debt is absorbed with real protocol fee shares burned FIRST, the residual is
+             # socialized, and a lender withdrawal realizes the loss directly — offline against an
+             # in-process LiteSVM, byte-exact PriceUpdateV2 fixtures, no Hermes
+             # (see docs/phases/phase-06-liquidation.md "Demo")
 ```
 
 `make fuzz`, `make bench`, and `make app` exist as stubs that name the phase that implements them
-(10, 11, and 9 respectively) — they are not yet functional. The full lending/liquidation/bad-debt
-demo scenario in [`docs/zero-cost-demo.md`](docs/zero-cost-demo.md) §5 ships in Phase 13, once those
-instructions exist.
+(10, 11, and 9 respectively) — they are not yet functional.
 
 The exact install commands, pinned versions, and verification steps are recorded in
 [`docs/phases/phase-01-foundation.md`](docs/phases/phase-01-foundation.md) §3 and

@@ -412,7 +412,7 @@ because it is exactly the kind of detail a memorized pattern gets wrong silently
 | RV-2 | Current Mollusk crate name/version and CU-measurement API | Phase 1 | ✅ RESOLVED (§12.2) |
 | RV-3 | Upgraded Pyth receiver program ID and whether `PriceUpdateV2` is still the account type | Phase 5 | ✅ **RESOLVED** — see §15.1: address unchanged at `rec5EKMGg6MxZYaMdyBfgwp4d5rB9T1VQH5pJv5LtFJ`; `PriceUpdateV2` unchanged |
 | RV-4 | Exact `VerificationLevel` enum shape in `pyth-solana-receiver-sdk` 2.x | Phase 5 | ✅ **RESOLVED** — see §15.2: `enum VerificationLevel { Partial { num_signatures: u8 }, Full }` |
-| RV-5 | Complete current Token-2022 extension list, including any added after Jan 2024 (e.g. `Pausable`, `ScaledUiAmount`) and their discriminants | Phase 7 | OPEN |
+| RV-5 | Complete current Token-2022 extension list, including any added after Jan 2024 (e.g. `Pausable`, `ScaledUiAmount`) and their discriminants | Phase 7 | ✅ **RESOLVED** (2026-09-11) — see `docs/token-compatibility.md` §0: `spl-token-2022-interface` 2.1.0, 27 real `ExtensionType` variants, all classified; `Pausable`/`ScaledUiAmount` both present and confirmed |
 | RV-6 | **Whether the Solana runtime permits `A → B → A` CPI reentrancy** (non-self-recursive). Aegis must not depend on the answer, but Phase 8's callback design must state it correctly. | Phase 8 | OPEN |
 | RV-7 | Whether SIMD-0296 (4096-byte transactions) is active on the target cluster and supported by `@solana/kit` | Phase 9 | OPEN |
 | RV-8 | Current Jupiter API/program surface for liquidation routing | Phase 8 | OPEN |

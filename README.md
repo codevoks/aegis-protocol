@@ -2,24 +2,24 @@
 
 **A risk-first, isolated-market, overcollateralized lending protocol on Solana.**
 
-> **STATUS: PHASE 6 — HEALTH, LIQUIDATION AND BAD DEBT.**
-> Aegis is under construction. Phase 5 added the real oracle (`programs/aegis/src/oracle`, checks
-> O-1..O-11 against the real `pyth-solana-receiver-sdk` 2.0.0 —
-> [ADR-0008](docs/adr/0008-oracle-abstraction-no-mock-program.md) — no mock provider, ever) and
-> made `borrow`/debt-bearing `withdraw_collateral` real, oracle-validated, LTV-checked
-> instructions. Phase 6 adds `liquidate`, `absorb_bad_debt` and `withdraw_collateral_fees`:
-> `crates/aegis-math/src/liquidation.rs` implements the close-factor/dust-rule `max_repay`,
-> seizure, bonus, protocol cut and the collateral clamp with upward-rounded repay recomputation
-> exactly per `economic-model.md` §7, with a **strict** `HF < WAD` liquidatability gate (`HF ==
-> WAD` is never liquidatable). Bad debt is recognized once a position's collateral is fully
-> exhausted (`collateral_amount == 0` exactly): protocol fee shares are burned first, and only the
-> residual is socialized across the market's lenders — permissionlessly, with no oracle dependency
-> and no pause path, ever. `withdraw_collateral_fees` lets the admin withdraw only the protocol's
-> own accrued collateral fee, structurally bounded so it can never reach user collateral
-> (`A-ADM-02`, the concrete proof of INV-ADM-01). Cross-market isolation (`I-ISO-01`) and the
-> absence of any shared writable account between markets (`A-PAR-02`) are both directly tested.
-> See [`docs/project-status.md`](docs/project-status.md) for the authoritative state of every
-> component.
+> **STATUS: PHASE 7 — TOKEN-2022 COMPLETION.**
+> Aegis is under construction. Phase 6 added `liquidate`, `absorb_bad_debt` and
+> `withdraw_collateral_fees` — close-factor/dust-rule liquidation, the collateral clamp, and
+> bad-debt socialization with protocol first-loss, exactly per `economic-model.md` §7-8. Phase 7
+> closes **RV-5**, the research gate asking for the complete current Token-2022 extension list:
+> the resolved `spl-token-2022-interface` version (2.1.0) is enumerated and classified extension
+> by extension in [`docs/token-compatibility.md`](docs/token-compatibility.md) §0, including
+> `Pausable` and `ScaledUiAmount` — extensions added after older, commonly-remembered lists. The
+> positive-allowlist policy engine, `ImmutableOwner` vault sizing, and measured-delta accounting
+> were already complete from Phases 2/3; Phase 7's new work is the full protocol lifecycle
+> (supply → deposit → borrow → accrue → liquidate → bad debt → fee withdrawal) proven correct on a
+> real transfer-fee Token-2022 collateral market (`A-TOK-10`), a fee rate raised mid-lifecycle via
+> the real `SetTransferFee` instruction and Token-2022's genuine 2-epoch activation delay,
+> without breaking accounting because Aegis never caches a fee rate anywhere (`A-TOK-11`), and a
+> concrete proof that `ImmutableOwner` blocks vault-authority reassignment even by the account's
+> genuine owner. Aegis's supported Token-2022 surface did not broaden: zero lines changed in
+> `programs/aegis/src` this phase. See [`docs/project-status.md`](docs/project-status.md) for the
+> authoritative state of every component.
 
 ---
 
@@ -96,17 +96,20 @@ Native Solana Rust and Pinocchio appear in scoped, benchmarked labs — not in p
 
 ## Quickstart
 
-**Right now (Phase 6):** on top of everything Phase 2-5 shipped, `programs/aegis` implements
-`liquidate` (strict `HF < WAD`; close-factor/dust-rule `max_repay`; seizure with the collateral
-clamp; the liquidation bonus; the protocol's cut taken from the bonus only, never from
-principal-equivalent collateral), `absorb_bad_debt` (permissionless, no oracle, unpausable,
-requires `collateral_amount == 0` exactly; burns the protocol's own fee shares before socializing
-any residual across lenders), and `withdraw_collateral_fees` (admin withdrawal bounded by
-`market.collateral_fee_accrued`, structurally unable to reach user collateral). Self-liquidation is
-permitted and proven economically unprofitable versus a plain `repay` (`U-LIQ-07`). Cross-market
-isolation is proven directly: bad debt recognized in one market leaves a second, independent
-market byte-identical (`I-ISO-01`), and no writable account is shared between the two for any
-Phase 6 instruction (`A-PAR-02`). There is still no SDK/app yet.
+**Right now (Phase 7):** on top of everything Phase 2-6 shipped, RV-5 is closed — the complete
+current Token-2022 extension list (27 real `ExtensionType` variants in the resolved
+`spl-token-2022-interface` 2.1.0) is enumerated and classified in
+[`docs/token-compatibility.md`](docs/token-compatibility.md) §0, with `Pausable` and
+`ScaledUiAmount` (extensions shipped after older, commonly-remembered lists) both verified rather
+than assumed. The full protocol lifecycle — supply, deposit, borrow, accrual, liquidation, bad
+debt, protocol first-loss, fee withdrawal — is proven correct on a real transfer-fee Token-2022
+collateral market with `INV-CUS-01`/`INV-CUS-02` asserted after every instruction (`A-TOK-10`), and
+a fee rate raised mid-lifecycle via the real `SetTransferFee` instruction (respecting Token-2022's
+genuine 2-epoch activation delay) does not break accounting, because Aegis never caches a fee rate
+anywhere (`A-TOK-11`). `ImmutableOwner` is proven to actually block vault-authority reassignment,
+not merely to be present. No line in `programs/aegis/src` changed this phase — the positive-
+allowlist policy engine, vault sizing, and measured-delta accounting were already complete from
+Phases 2/3. There is still no SDK/app yet.
 
 ```bash
 make setup   # verify the pinned toolchain (Solana CLI, Anchor, Surfpool, Node) is installed

@@ -1,8 +1,8 @@
 # Aegis — Project Status
 
 **Last updated: 2026-09-11**
-**Current phase: Phase 6 — Health, Liquidation & Bad Debt — COMPLETE**
-**Next phase: Phase 7 — Token-2022 — NOT STARTED**
+**Current phase: Phase 7 — Token-2022 Completion — COMPLETE**
+**Next phase: Phase 8 — Composability — NOT STARTED**
 
 > This file is the first thing any contributor or model reads after `AGENTS.md`. It must always
 > reflect reality. **"Implemented" never means "verified."** The five states below are tracked
@@ -36,7 +36,7 @@ rounded up.
 | 4 | Lending, borrowing & interest | ✅ **COMPLETE** | `phase-04-lending` |
 | 5 | Oracle | ✅ **COMPLETE** | `phase-05-oracle` |
 | 6 | Health, liquidation & bad debt | ✅ **COMPLETE** | `phase-06-liquidation` |
-| 7 | Token-2022 | ⬜ NOT STARTED | — |
+| 7 | Token-2022 Completion | ✅ **COMPLETE** | `phase-07-token2022` |
 | 8 | Composability | ⬜ NOT STARTED | — |
 | 9 | SDK, client & UI | ⬜ NOT STARTED | — |
 | 10 | Security campaign | ⬜ NOT STARTED | — |
@@ -80,6 +80,27 @@ amount == 0` exactly, reads no oracle, and is structurally unpausable; it burns 
 moves no tokens. `withdraw_collateral_fees` lets the admin withdraw only `market.collateral_fee_
 accrued`, structurally incapable of reaching user collateral (`A-ADM-02`, the concrete proof of
 INV-ADM-01). Full evidence is in **Phase 6 — evidence** below.
+
+**Phase 7 is complete.** RV-5 (the complete current Token-2022 extension list) is closed:
+`spl-token-2022-interface` resolves to **2.1.0** in this workspace's `Cargo.lock`, its 27 real
+`ExtensionType` variants are enumerated and classified in `docs/token-compatibility.md` §0, and
+`Pausable`/`ScaledUiAmount` — the document's own flagged examples of post-2024 extensions — are
+both present and correctly classified (Tier C and Tier A respectively). The positive-allowlist
+policy engine (`programs/aegis/src/token/policy.rs`), the vault `ImmutableOwner`/exact-sizing
+logic (`token/vault.rs`), and measured-delta accounting (`token/transfer.rs`) all already existed
+from Phases 2/3 (this repository tested `U-TOK-01/02`, `A-TOK-01..09` early, ahead of their
+nominally-assigned phase, exactly as Phase 3's own evidence section already documented) —
+Phase 7's genuine new work was closing RV-5 itself, `U-TOK-03`, two supplementary Tier C fixtures
+for extensions absent from earlier lists (`Pausable`, `NonTransferable`), a concrete
+`ImmutableOwner`-cannot-be-reassigned proof, and the two tests this phase exists for: `A-TOK-10`
+(the full protocol lifecycle — supply, deposit, borrow, accrual, liquidation, bad debt, protocol
+first-loss, fee withdrawal, lender withdrawal — on a real transfer-fee Token-2022 collateral
+market, with INV-CUS-01/INV-CUS-02 asserted after **every** instruction) and `A-TOK-11` (the fee
+authority raises the rate mid-lifecycle via the real `SetTransferFee` instruction, respecting
+Token-2022's genuine 2-epoch activation delay, and accounting remains exact throughout because
+Aegis never caches a fee rate anywhere — it only ever measures `after − before` across each CPI).
+No code in `programs/aegis/src` changed in this phase; every change is in `crates/aegis-test-kit`
+(new fixtures) and `tests/` (new coverage). Full evidence is in **Phase 7 — evidence** below.
 
 ## Component status
 
@@ -245,7 +266,21 @@ and `INV-RES-03`:
 formally assigned to Phase 6 in `docs/invariants.md`'s per-phase column; every one is mapped above
 to a concrete, currently-passing test.
 
-Still **0 of the 87 numbered `invariants.md` invariants assigned to Phases 7-13** are implemented
+Phase 7 is the first phase to formally close the one `invariants.md` row assigned to it:
+
+| ID | Tested by |
+|---|---|
+| INV-CUS-05 | `U-TOK-02` (Phase 3, early coverage — unchanged) plus `tests/phase7_token2022.rs`'s `a_tok_10_full_lifecycle_on_transfer_fee_collateral_market` and `a_tok_11_fee_rate_change_mid_lifecycle_does_not_break_accounting`, which assert measured-delta crediting holds across an entire multi-instruction lifecycle and across a real fee-rate change, not merely at a single deposit |
+
+`INV-CUS-06` and `INV-CUS-07` (also Token-2022-relevant per `docs/invariants.md`'s own text) are
+formally assigned to Phase 3 and were already closed there (`A-CUS-06`, `A-TOK-08`/`A-TOK-09`);
+Phase 7 does not re-assign them, and the phase-7 task's own instructions requesting them "fully
+tested" are satisfied by that existing, unchanged Phase 3 evidence — re-running it is part of this
+phase's regression pass (§17 below). **Note:** `docs/invariants.md` has no `INV-TOK-*` series; the
+only Token-2022-relevant invariants in the frozen 87 are the `INV-CUS-05/06/07` rows above. Any
+reference to `INV-TOK-*` is a naming assumption to flag, not a document to invent additions into.
+
+Still **0 of the 87 numbered `invariants.md` invariants assigned to Phases 8-13** are implemented
 or tested — expected at this point; see `docs/invariants.md` for the full per-phase assignment.
 
 ---
@@ -338,7 +373,7 @@ rediscover them.
 | RV-2 | Current Mollusk crate/version and CU API | 1 | ✅ **RESOLVED** — `mollusk-svm` 0.15.1; CU API not yet exercised (first used Phase 2+) |
 | RV-3 | Upgraded Pyth receiver program ID (post 2026-08-26) | 5 | ✅ **RESOLVED** — unchanged at `rec5EKMGg6MxZYaMdyBfgwp4d5rB9T1VQH5pJv5LtFJ`; see `docs/ecosystem-research.md` §15.1 |
 | RV-4 | `VerificationLevel` shape in `pyth-solana-receiver-sdk` 2.x | 5 | ✅ **RESOLVED** — `enum { Partial { num_signatures: u8 }, Full }`; see `docs/ecosystem-research.md` §15.2 |
-| RV-5 | Complete current Token-2022 extension list and discriminants | 7 | OPEN |
+| RV-5 | Complete current Token-2022 extension list and discriminants | 7 | ✅ **RESOLVED** — `spl-token-2022-interface` 2.1.0; see `docs/token-compatibility.md` §0 |
 | RV-6 | Does the runtime permit `A → B → A` CPI reentrancy? | 8 | OPEN |
 | RV-7 | SIMD-0296 (4096-byte tx) availability and `@solana/kit` support | 9 | OPEN |
 | RV-8 | Current Jupiter integration surface | 8 | OPEN |
@@ -423,7 +458,274 @@ directly against the collateral-clamp path during authoring) — a resource-allo
 the same way Phase 5 recorded `borrow`'s own CU finding, not a security-relevant change; `INV-RES-01`
 remains explicitly Phase 11 (Performance) scope.
 
+No ADR was added or changed in Phase 7, and no frozen document's *classification* changed — RV-5's
+resolution filled in previously-open/pending rows of `token-compatibility.md` (an update the
+document's own header explicitly called for: "Research gate RV-5 must be closed in Phase 7") and
+added two rows (`ConfidentialMintBurn`, plus the §0.2 account-level completeness table) that were
+simply absent from the pre-Phase-7 table by name, not reclassified. No program code in
+`programs/aegis/src` changed: the positive-allowlist policy engine, `ImmutableOwner` vault sizing,
+and measured-delta transfer accounting were already complete from Phases 2/3, and this phase's own
+adversarial self-audit (§19 below) confirmed no extension-specific carve-out exists anywhere in
+`token/policy.rs` that could have silently broadened acceptance. Aegis's supported Token-2022
+surface at the end of Phase 7 is identical to its surface at the end of Phase 3.
+
 ---
+
+## Phase 7 — evidence
+
+### 1. RV-5 — research gate closure
+
+See `docs/token-compatibility.md` §0 for the full write-up. Summary: `spl-token-2022-interface`
+resolves to **2.1.0** (`Cargo.lock`, cross-checked against the crate's own vendored source and
+crates.io); its `ExtensionType` enum has 27 real variants, all classified in §0.1/§0.2 by Mint vs.
+Account applicability, transfer/CPI/accounting/authority/sizing impact, collateral/loan-asset
+safety, and Tier. `Pausable` and `ScaledUiAmount` — this document's own flagged examples of
+extensions added after older lists — are both present and were already correctly classified
+before this phase began; Phase 7 confirms that against the real crate rather than a remembered
+list, and closes the gate formally. No classification changed and no new extension was admitted.
+
+### 2. Policy engine, vault, and transfer-accounting code — unchanged, and correct
+
+`programs/aegis/src/token/policy.rs`, `token/vault.rs`, and `token/transfer.rs` were already
+complete from Phases 2/3 (project-status.md's own Phase 3 evidence recorded early coverage of
+`U-TOK-01/02` and `A-TOK-05..09` ahead of their nominally-assigned phase). Phase 7 changed **zero**
+lines in `programs/aegis/src` — verified by `git diff --stat` before commit (§20 below) — because
+the positive-allowlist `match` in `evaluate_mint` already names every Tier A/B extension
+explicitly and rejects everything else, including every extension RV-5 surfaced, through the one
+shared catch-all arm. This is the concrete meaning of "positive allowlist, not blocklist": no code
+change was needed for Aegis to correctly reject `Pausable` and `NonTransferable`, because it never
+had to recognize them by name to reject them.
+
+### 3. Role asymmetry — re-verified unchanged
+
+`transfer_fee_mint_accepted_as_collateral_rejected_as_loan_asset` (Phase 2) remains the primary
+proof; `a_tok_10_full_lifecycle_on_transfer_fee_collateral_market` and
+`a_tok_11_fee_rate_change_mid_lifecycle_does_not_break_accounting` (this phase) add the full-
+lifecycle and fee-rate-change dimensions on the collateral side specifically, since that is the
+only role a transfer-fee mint may occupy.
+
+### 4. `ImmutableOwner` — sizing, initialization order, and effectiveness
+
+Sizing and initialization order were already implemented in `token/vault.rs` (Phase 2/3,
+`ExtensionType::try_calculate_account_len`, `InitializeImmutableOwner` before `InitializeAccount3`)
+and already tested (`transfer_fee_mint_accepted_as_collateral_rejected_as_loan_asset` asserts a
+Token-2022 vault's size exceeds the legacy 165-byte constant). Phase 7 adds the missing piece: a
+concrete proof the extension is *effective*, not merely present —
+`immutable_owner_blocks_reassignment_even_by_the_genuine_current_owner` builds a standalone
+Token-2022 account via the identical instruction sequence `token/vault.rs` uses, then shows that
+even the account's real, correctly-signing current owner cannot reassign it via a real
+`SetAuthority(AccountOwner)` instruction. Combined with `scripts/check-collateral-transfer-paths.sh`
+(unaffected by this phase) proving no code in `programs/aegis/src` ever calls `set_authority` at
+all, "the vault owner cannot later be reassigned" is proven both structurally (Aegis never asks)
+and behaviorally (the extension refuses even if asked).
+
+### 5. `A-TOK-10` — full lifecycle on a transfer-fee collateral market
+
+`tests/phase7_token2022.rs::a_tok_10_full_lifecycle_on_transfer_fee_collateral_market`: a real
+Token-2022 mint with a 2% transfer fee (no cap) as collateral against a plain SPL loan asset,
+carried through `create_market` → `init_position` ×2 → `supply` → `deposit_collateral`
+(credited = 9.8 SOL from a 10 SOL request, asserted exactly) → `borrow` → `accrue_interest` →
+a price crash → `liquidate` (protocol_cut confirmed > 0) → the adaptive bad-debt path (mirroring
+`tests/phase6_integration.rs`'s own adaptive pattern) → `absorb_bad_debt` →
+`withdraw_collateral_fees` (paid in the fee-bearing mint itself; the admin's own ATA sized for it,
+and the admin — an ordinary recipient here — confirmed to bear the outbound fee, i.e. receives
+less than `collateral_fee_accrued`, while Aegis's internal accounting is proven to have decremented
+by the exact recorded amount regardless) → `withdraw` (lender cleanup). `assert_inv_cus_01`/
+`assert_inv_cus_02` are called after **every** state-changing instruction, not only at the end —
+12 call sites in one test.
+
+### 6. `A-TOK-11` — fee-rate change mid-lifecycle
+
+`tests/phase7_token2022.rs::a_tok_11_fee_rate_change_mid_lifecycle_does_not_break_accounting`. Uses
+the real `SetTransferFee` instruction (`spl_token_2022_interface::extension::transfer_fee::instruction::set_transfer_fee`)
+and respects Token-2022's genuine 2-epoch activation delay
+(`TransferFeeConfig::get_epoch_fee`) rather than assuming the change is immediate:
+
+| Step | Rate in effect | Requested | Credited | Fee |
+|---|---|---|---|---|
+| Deposit #1 (before any change) | 1% | 10.000000000 SOL | 9.900000000 SOL | 100000000 |
+| Deposit — same epoch as `SetTransferFee(5%)` | **still 1%** (delay not yet elapsed) | 5.000000000 SOL | 4.950000000 SOL | 50000000 |
+| Deposit #2 (after `advance_epoch(3)`) | **5%** (now effective) | 10.000000000 SOL | 9.500000000 SOL | 500000000 |
+
+The same-epoch deposit is the load-bearing assertion: it proves Aegis is reading whatever the
+token program actually applies at the moment of the CPI (measured delta), not a value read once
+and cached — the exact bug this test exists to catch, per `token-compatibility.md` §7's own
+framing. `market.rs`'s `Market` struct has no fee-rate field at all (grep-verifiable), so there is
+nothing to have cached in the first place; this test proves that structural fact is also
+behaviorally correct. A subsequent `withdraw_collateral` (outbound leg, under the now-5% rate)
+confirms the vault still debits exactly the recorded amount regardless of the current fee, with
+the recipient bearing the fee — INV-CUS-01/INV-CUS-02 asserted after every step, including both
+deposits, the borrow, and the withdrawal.
+
+### 7. RV-5 supplementary evidence
+
+`pausable_mint_rejected_as_collateral` and `non_transferable_mint_rejected` build real Token-2022
+mints carrying `Pausable`/`NonTransferable` (via real `InitializePausableConfig`/
+`InitializeNonTransferableMint` instructions, not synthetic bytes) and confirm `create_market`
+rejects both. `u_tok_03_cached_decimals_match_mint_for_every_supported_configuration` confirms
+`market.collateral_decimals`/`loan_decimals` equal the real mint decimals for both a classic
+SPL/SPL configuration (9/6 decimals) and a Token-2022 transfer-fee collateral configuration (8
+decimals, deliberately different from the first, to rule out a hardcoded/copy-pasted value).
+
+### 8. Test-kit additions
+
+`crates/aegis-test-kit/src/mints.rs`: `Token2022Extension::Pausable`/`NonTransferable` variants;
+`set_transfer_fee_rate` (real `SetTransferFee` CPI); `fetch_transfer_fee_config` (reads back
+`older_transfer_fee`/`newer_transfer_fee`); `advance_epoch` (the same direct-`Clock`-sysvar-
+mutation technique `tests/phase6_integration.rs` already used for `unix_timestamp` warps, applied
+to `epoch`). `crates/aegis-test-kit/src/user_tokens.rs`:
+`create_immutable_owner_account`. `crates/aegis-test-kit/src/token_accounts.rs`:
+`fetch_mint_decimals`. No production code (`programs/aegis/src`) changed.
+
+### 9. Tests — commands actually run and results
+
+```
+$ anchor build --ignore-keys
+    Finished `release` profile [optimized] target(s)
+    Finished `test` profile [unoptimized + debuginfo] target(s)
+
+$ cargo test --workspace
+```
+
+New Phase 7 test file:
+
+| File | Tests |
+|---|---|
+| `tests/phase7_token2022.rs` | 6 |
+
+Full workspace count, in the exact order `cargo test --workspace` reports each suite (every
+`test result: ok.` line summed, unedited transcript):
+
+```
+32 (aegis unit) + 55 (aegis-math unit) + 1 (inflation_attack) + 4 (liquidation_property)
++ 3 (property) + 6 (rounding_law) + 4 (shares_property) + 3 (aegis-test-kit unit)
++ 8 (phase2_adversarial) + 5 (phase2_state) + 9 (phase2_token_policy) + 10 (phase3_adversarial)
++ 5 (phase3_collateral) + 8 (phase4_adversarial) + 9 (phase4_lending)
++ 21 (phase5_oracle_adversarial) + 5 (phase6_admin) + 13 (phase6_bad_debt)
++ 1 (phase6_integration) + 17 (phase6_liquidation) + 6 (phase7_token2022) + 1 (smoke)
+= 226
+```
+
+(the three `Doc-tests` crates contribute 0 each, as in every prior phase). **226 tests total, 0
+failures** — this repository's own Phase 6 evidence (§ "Phase 6 — evidence" below) recorded "219
+tests total" at the time; re-running the identical `cargo test --workspace` command against the
+current, unmodified pre-Phase-7 state (the baseline check performed before any Phase 7 change,
+`git rev-parse HEAD` at `08a8ea3`) actually measures **220**, one higher than that historical
+figure — a pre-existing one-test discrepancy in Phase 6's own arithmetic, not introduced by this
+phase and not corrected here (Phase 6's evidence section is left as originally written, per
+`AGENTS.md` §12: describe what exists, in the tense that is true, without silently rewriting a
+prior phase's record). What this phase can and does state truthfully: the measured baseline
+immediately before Phase 7 began was 220 passing tests, 0 failures; the measured total immediately
+after is 226 passing tests, 0 failures; the difference (6) is exactly `tests/phase7_token2022.rs`,
+and no other file's test count changed. **0 failures** in every run performed during this phase.
+
+### 10. Demo
+
+```
+$ make demo
+anchor build
+cargo run -p aegis-test-kit --example phase7_demo
+```
+
+Full transcript (every figure below was printed by the actual run, not reconstructed):
+
+```
+Aegis Protocol — Phase 7 demo (Token-2022 completion)
+Zero-cost, local, offline: in-process LiteSVM, no devnet, no RPC, no API key.
+
+=== 1. Two markets: A = classic SPL collateral, B = Token-2022 transfer-fee (2%) collateral ===
+
+=== 2. Borrower deposits collateral on both markets (B requests slightly more to offset the fee) ===
+  Market A (classic SPL)                  requested 10.000000000 SOL  credited 10.000000000 SOL  fee 0.000000000 SOL
+  Market B (Token-2022, 2% transfer fee)  requested 10.300000000 SOL  credited 10.094000000 SOL  fee 0.206000000 SOL
+
+=== 3. Borrower borrows 900 USDC on both markets at SOL=$150.00 / USDC=$1.00 ===
+  Market A (classic SPL)                  borrowed 900.000000 USDC
+  Market B (Token-2022, 2% transfer fee)  borrowed 900.000000 USDC
+
+=== 4. Interest accrual (permissionless instruction) on both markets ===
+  accrue_interest succeeded on both markets; custody invariants held.
+
+=== 5. SOL crashes to $95.00 -- both positions become liquidatable ===
+
+=== 6. Liquidation on both markets -- full debt repaid, collateral seized ===
+  Market A (classic SPL)                  repaid 900.000000 USDC  vault decreased by 9.922870253 SOL  liquidator received 9.922870253 SOL  protocol_cut 0.047477848 SOL
+  Market B (Token-2022, 2% transfer fee)  repaid 900.000000 USDC  vault decreased by 9.922870253 SOL  liquidator received 9.724412847 SOL  protocol_cut 0.047477848 SOL
+    (Market B bears the outbound transfer fee on the liquidator's leg -- the vault-side accounting above still reconciles exactly, per INV-CUS-02)
+
+=== 7. Cleanup: lenders withdraw on both markets ===
+  Market A (classic SPL)                  lender redeemed 1200.000000 USDC
+  Market B (Token-2022, 2% transfer fee)  lender redeemed 1200.000000 USDC
+
+=== 8. Verified extension-policy rejection table (real create_market attempts) ===
+  Extension                                            Result                           Reason
+  TransferHook                                         REJECTED                         UnsupportedTokenExtension
+  PermanentDelegate                                    REJECTED                         UnsupportedTokenExtension
+  MintCloseAuthority                                   REJECTED                         UnsupportedTokenExtension
+  DefaultAccountState = Frozen                         REJECTED                         UnsupportedTokenExtension
+  Pausable (RV-5)                                      REJECTED                         UnsupportedTokenExtension
+  NonTransferable (RV-5)                               REJECTED                         UnsupportedTokenExtension
+  Unrecognized discriminant (positive allowlist)       REJECTED                         InvalidMintAccountData
+  TransferFeeConfig as LOAN asset (accepted as collateral above) REJECTED                         TransferFeeNotAllowedForLoanAsset
+
+Phase 7 demo complete. INV-CUS-01/INV-CUS-02 held after every instruction on both markets.
+```
+
+Note the vault-decrease figure is **identical** between Market A and Market B
+(9.922870253 SOL) — the liquidation math (seizure, bonus, protocol cut) is computed from debt and
+price alone, is independent of which token program the collateral mint uses, and the *only*
+place Token-2022 changes what a party observes is the recipient's received amount (the liquidator
+gets 9.724412847 SOL, not 9.922870253, on Market B) — exactly the asymmetry
+`account-model.md` §6.4 specifies: outbound transfers debit exactly the recorded amount, and the
+recipient bears any fee.
+
+### 11. Regression — prior-phase guarantees re-run
+
+```
+$ cargo fmt --all -- --check         # clean
+$ cargo clippy --workspace --all-targets -- -D warnings   # clean, zero warnings
+$ for f in scripts/check-*.sh; do bash "$f"; done
+check-collateral-transfer-paths: OK
+check-no-close: OK
+check-no-dup: OK
+check-no-float: OK
+check-no-init-if-needed: OK
+check-no-slot-time: OK
+check-overflow-checks: OK
+$ anchor build --ignore-keys          # succeeds
+$ cargo test --workspace              # 226 passed, 0 failed (see §9)
+```
+
+Every Phase 1-6 test file passes completely unmodified. `git diff --stat` against
+`phase-06-liquidation` (checked before commit, §20 below) confirms zero lines changed in
+`programs/aegis/src` — this phase is test-kit and test additions plus documentation, exactly as
+§2 above states.
+
+### 12. Security self-audit (phase spec §28)
+
+| Question | Answer |
+|---|---|
+| Can an unknown extension pass? | No — `A-TOK-05` (Phase 2, re-run) |
+| Can a newly-added current extension escape classification? | No — `Pausable`/`NonTransferable` both tested this phase; RV-5 (§0) enumerates all 27 real variants and every one not explicitly allowlisted hits the same catch-all rejection |
+| Can a transfer-fee loan asset pass? | No — `A-TOK-06` (Phase 2, re-run) and the demo's rejection table (§10) |
+| Can a transfer-hook mint pass? | No — `A-TOK-01` (Phase 2, re-run) |
+| Can a confidential-transfer mint pass? | No, structurally — no match arm admits `ConfidentialTransfer*`/`ConfidentialMintBurn`; see `token-compatibility.md` §7.1's explicit reasoning for why no dedicated fixture was built |
+| Can a freeze-authority mint pass without acknowledgement? | No — `A-TOK-07` (Phase 2, re-run) |
+| Can the mint owner/token program be substituted? | No — `A-TOK-08`/`A-TOK-09` (Phase 3, re-run) |
+| Can vault account size be under-allocated? | No — `ExtensionType::try_calculate_account_len` is the only sizing path (`token/vault.rs`, unchanged); `A-TOK-10`'s fee-mint vault exercised end-to-end |
+| Can `ImmutableOwner` initialization be omitted? | No — unconditional in `token/vault.rs` for every Token-2022 vault (unchanged); `immutable_owner_blocks_reassignment_even_by_the_genuine_current_owner` proves it is also *effective* |
+| Can the token authority be reassigned? | No — proven this phase, both structurally (grep: no `set_authority` call anywhere in `programs/aegis/src`) and behaviorally |
+| Can mid-lifecycle fee changes break internal accounting? | No — `A-TOK-11` |
+| Is any fee calculation hardcoded/cached? | No — `Market` has no fee-rate field; grep-verifiable |
+| Is nominal amount credited anywhere after a fee-bearing CPI? | No — `token/transfer.rs` unchanged; every credit is `after − before` post-`reload()` |
+| Is any required post-CPI `reload()` missing? | No — unchanged from Phase 3, re-exercised by `A-TOK-10`/`A-TOK-11` |
+| Can raw token donation become user credit? | No — `A-CUS-08` (Phase 4, re-run; unrelated to this phase but re-verified in the full regression) |
+| Can scaled/display semantics alter raw protocol balances? | No — `token-compatibility.md` §0.3: no call site touches `ScaledUiAmount`'s UI-conversion instructions |
+| Does the full liquidation/bad-debt lifecycle reconcile under transfer fees? | Yes — `A-TOK-10` |
+| Did support accidentally expand beyond frozen v1 policy? | No — §2 above; zero lines changed in `programs/aegis/src` |
+
+No Phase-7-scoped finding required a fix; every question above was answered by an existing
+mechanism plus new test evidence, not a code change.
 
 ## Phase 6 — evidence
 
@@ -2713,5 +3015,5 @@ change to the design.
 
 ## Next action
 
-**Phase 5 is complete. Hand Phase 6 (health, liquidation & bad debt) to the implementation model
-when the maintainer explicitly authorizes it. Phase 6 has NOT been started.**
+**Phase 7 is complete. Hand Phase 8 (composability) to the implementation model when the
+maintainer explicitly authorizes it. Phase 8 has NOT been started.**

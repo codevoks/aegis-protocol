@@ -1,7 +1,6 @@
 # Phase 7 — Token-2022 Completion
 
-**Status: NOT STARTED.** **Prerequisite: Phase 6 complete and tagged.**
-**Research gate RV-5 must be closed first.**
+**Status: COMPLETE.** Tagged `phase-07-token2022`. RV-5 closed (`docs/token-compatibility.md` §0).
 
 ## Scope
 1. Close RV-5: enumerate the **complete current** Token-2022 extension list (including any added
@@ -45,13 +44,16 @@ print `amount` vs `credited` at each step, showing the accounting reconciles exa
 Print the rejection table with the specific reason for each unsupported extension.
 
 ## Acceptance criteria
-- [ ] RV-5 closed; the full current extension list classified with sources and date.
-- [ ] Positive allowlist verified against an unrecognized discriminant.
-- [ ] Full protocol lifecycle passes on a transfer-fee collateral market.
-- [ ] Fee-rate change mid-lifecycle handled correctly.
-- [ ] INV-CUS-02 exact on every fee-bearing operation.
-- [ ] `token-compatibility.md` updated to reflect the verified list.
-- [ ] INV-TOK-*, INV-CUS-05/06/07 fully tested.
-- [ ] Universal checklist satisfied. Tag `phase-07-token2022`.
+- [x] RV-5 closed; the full current extension list classified with sources and date.
+- [x] Positive allowlist verified against an unrecognized discriminant (`A-TOK-05`, Phase 2,
+      re-run this phase; also re-verified against `Pausable`/`NonTransferable` this phase).
+- [x] Full protocol lifecycle passes on a transfer-fee collateral market (`A-TOK-10`).
+- [x] Fee-rate change mid-lifecycle handled correctly (`A-TOK-11`).
+- [x] INV-CUS-02 exact on every fee-bearing operation (asserted after every instruction in
+      `A-TOK-10`/`A-TOK-11`).
+- [x] `token-compatibility.md` updated to reflect the verified list.
+- [x] INV-CUS-05/06/07 fully tested (`docs/invariants.md` has no `INV-TOK-*` series — see
+      `docs/project-status.md`'s Phase 7 invariant-status note).
+- [x] Universal checklist satisfied. Tagged `phase-07-token2022`.
 
 **STOP after this phase.**

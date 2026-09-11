@@ -42,17 +42,20 @@ fuzz:
 bench:
 	@echo "not implemented until Phase 11 (performance)"
 
-## Phase 5 demo: real oracle-validated borrow succeeds, the oracle goes stale so borrow and
-## debt-bearing withdraw_collateral fail closed while repay and deposit_collateral keep working,
-## the oracle recovers at a new price, and the recomputed health factor is printed — see
-## docs/phases/phase-05-oracle.md "Demo". Zero-cost, offline, in-process LiteSVM; byte-exact
+## Phase 6 demo: SOL crashes to $95.00, a position becomes liquidatable and is liquidated for the
+## exact economic-model.md §7.5 figures (seizure, bonus, protocol cut); a second position is
+## crashed to $40.00, its collateral fully seized by the clamp with debt remaining, and the
+## resulting bad debt is absorbed with real protocol fee shares burned FIRST before the residual
+## is socialized — a lender then withdraws and realizes the loss directly. See
+## docs/phases/phase-06-liquidation.md "Demo". Zero-cost, offline, in-process LiteSVM; byte-exact
 ## PriceUpdateV2 fixtures via the real pyth-solana-receiver-sdk, no Hermes, no Pyth program deploy.
 ## Earlier phase demos remain runnable directly:
 ## `cargo run -p aegis-test-kit --example phase2_demo`
 ## `cargo run -p aegis-test-kit --example phase3_demo`
 ## `cargo run -p aegis-test-kit --example phase4_demo`
+## `cargo run -p aegis-test-kit --example phase5_demo`
 demo: build
-	cargo run -p aegis-test-kit --example phase5_demo
+	cargo run -p aegis-test-kit --example phase6_demo
 
 ## UI against local Surfpool — Phase 9.
 app:

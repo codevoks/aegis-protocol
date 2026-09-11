@@ -45,3 +45,18 @@ pyth-solana-receiver-sdk = "2.0.0"
 # explicitly Phase 11 (Performance) scope. Same major line already resolved transitively (verified
 # in Cargo.lock).
 solana-compute-budget-interface = "3"
+
+[dev-dependencies]
+# Phase 8 demo only (examples/phase8_demo.rs) -- never a dependency of the library itself. `cpi`
+# (no-entrypoint) so these compile as plain libraries here; the demo loads their real, separately
+# built `.so` bytes into LiteSVM directly and only needs typed `ID`/`instruction::*` access.
+example-liquidator = { path = "../../labs/example-liquidator", features = ["cpi"] }
+hostile-callback = { path = "../../labs/hostile-callback", features = ["cpi"] }
+# examples/phase8_price_fixture_dump.rs only -- dumps the real Pyth fixture bytes to JSON for the
+# TypeScript keeper demo (bots/liquidator/src/demo.ts) to inject into a local Surfpool validator,
+# so Pyth's account layout is never reimplemented in TypeScript. Both already transitive
+# dependencies of this workspace (verified in Cargo.lock before adding directly), so this adds
+# zero new crates to the supply chain.
+base64 = "0.22.1"
+hex = "0.4.3"
+serde_json = "1.0.151"

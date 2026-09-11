@@ -881,6 +881,8 @@ fn a_par_02_no_writable_account_shared_between_two_markets() {
         collateral_token_program: spl_token_interface::ID,
         collateral_price_update: price_a1,
         loan_price_update: price_a2,
+        callback_program: None,
+        callback_collateral_account: None,
     }
     .to_account_metas(None);
     let liquidate_metas_b = aegis::accounts::Liquidate {
@@ -898,6 +900,8 @@ fn a_par_02_no_writable_account_shared_between_two_markets() {
         collateral_token_program: spl_token_interface::ID,
         collateral_price_update: price_b1,
         loan_price_update: price_b2,
+        callback_program: None,
+        callback_collateral_account: None,
     }
     .to_account_metas(None);
 

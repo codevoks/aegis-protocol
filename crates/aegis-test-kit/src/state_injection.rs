@@ -132,3 +132,30 @@ pub fn seed_borrow_state(
         .expect("fixture: loan_vault does not hold enough real tokens for this injected debt");
     set_token_account_amount(svm, loan_vault, vault_after_amount);
 }
+
+/// Phase 8 (ADR-0013, `A-CPI-02`): overwrites `market.liquidation_guard` directly, so a test can
+/// exercise Aegis's own protocol-level reentrancy guard against a plain, ordinary `liquidate`
+/// call -- independent of whatever the Solana runtime's own CPI-reentrancy behavior happens to be
+/// (`docs/ecosystem-research.md` §16.1). Simulates "a liquidation callback is already in flight on
+/// this market" without needing a real, currently-executing CPI to produce that state.
+pub fn set_liquidation_guard(svm: &mut LiteSVM, market: Pubkey, guard: u8) {
+    let mut market_state = fetch_market(svm, &market);
+    market_state.liquidation_guard = guard;
+
+    let existing_market_account = svm.get_account(&market).expect("market account must exist");
+    let mut data = Vec::new();
+    market_state
+        .try_serialize(&mut data)
+        .expect("serialize injected market state");
+    svm.set_account(
+        market,
+        RawAccount {
+            lamports: existing_market_account.lamports,
+            data,
+            owner: existing_market_account.owner,
+            executable: existing_market_account.executable,
+            rent_epoch: existing_market_account.rent_epoch,
+        },
+    )
+    .expect("failed to inject market liquidation_guard fixture");
+}

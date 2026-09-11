@@ -39,6 +39,10 @@ const HIGHER_COMPUTE_UNIT_LIMIT: u32 = 400_000;
 /// real liquidator client must budget for the worst case. Resource-allocation, not a security
 /// check -- as `HIGHER_COMPUTE_UNIT_LIMIT`'s own doc comment states, INV-RES-01 is Phase 11 scope.
 const LIQUIDATE_COMPUTE_UNIT_LIMIT: u32 = 800_000;
+/// Phase 8: the callback branch does everything the plain path does, PLUS an extra CPI running the
+/// callback program's own logic (a swap, in the honest case). Sized generously since this is a
+/// test-only compute request, not a production CU claim (INV-RES-01 is explicitly Phase 11 scope).
+const LIQUIDATE_WITH_CALLBACK_COMPUTE_UNIT_LIMIT: u32 = 1_000_000;
 
 // --- PDA derivation, mirroring account-model.md exactly ---
 
@@ -760,14 +764,184 @@ pub fn liquidate_ix(
             collateral_token_program,
             collateral_price_update,
             loan_price_update,
+            callback_program: None,
+            callback_collateral_account: None,
         }
         .to_account_metas(None),
         data: aegis::instruction::Liquidate {
             repay_assets,
             seize_collateral,
+            callback_data: vec![],
         }
         .data(),
     }
+}
+
+/// Phase 8 (`docs/composability.md`, ADR-0013): as `liquidate_ix`, but with the optional callback
+/// supplied. `extra_accounts` becomes `ctx.remaining_accounts` verbatim — the callback's own,
+/// liquidator-chosen accounts (e.g. a swap route), opaque to Aegis.
+#[allow(clippy::too_many_arguments)]
+pub fn liquidate_with_callback_ix(
+    liquidator: &Pubkey,
+    market: Pubkey,
+    position: Pubkey,
+    fee_position: Pubkey,
+    loan_vault: Pubkey,
+    collateral_vault: Pubkey,
+    liquidator_loan_ata: Pubkey,
+    liquidator_collateral_ata: Pubkey,
+    loan_mint: Pubkey,
+    collateral_mint: Pubkey,
+    loan_token_program: Pubkey,
+    collateral_token_program: Pubkey,
+    collateral_price_update: Pubkey,
+    loan_price_update: Pubkey,
+    repay_assets: u64,
+    seize_collateral: u64,
+    callback_program: Pubkey,
+    callback_collateral_account: Pubkey,
+    extra_accounts: Vec<solana_instruction::AccountMeta>,
+    callback_data: Vec<u8>,
+) -> Instruction {
+    let mut accounts = aegis::accounts::Liquidate {
+        liquidator: *liquidator,
+        market,
+        position,
+        fee_position,
+        loan_vault,
+        collateral_vault,
+        liquidator_loan_ata,
+        liquidator_collateral_ata,
+        loan_mint,
+        collateral_mint,
+        loan_token_program,
+        collateral_token_program,
+        collateral_price_update,
+        loan_price_update,
+        callback_program: Some(callback_program),
+        callback_collateral_account: Some(callback_collateral_account),
+    }
+    .to_account_metas(None);
+    accounts.extend(extra_accounts);
+
+    Instruction {
+        program_id: aegis::ID,
+        accounts,
+        data: aegis::instruction::Liquidate {
+            repay_assets,
+            seize_collateral,
+            callback_data,
+        }
+        .data(),
+    }
+}
+
+/// Permissionless: any funded keypair can pay for and submit this transaction.
+#[allow(clippy::too_many_arguments)]
+pub fn liquidate_with_callback(
+    svm: &mut LiteSVM,
+    liquidator: &Keypair,
+    market: Pubkey,
+    position: Pubkey,
+    fee_position: Pubkey,
+    loan_vault: Pubkey,
+    collateral_vault: Pubkey,
+    liquidator_loan_ata: Pubkey,
+    liquidator_collateral_ata: Pubkey,
+    loan_mint: Pubkey,
+    collateral_mint: Pubkey,
+    loan_token_program: Pubkey,
+    collateral_token_program: Pubkey,
+    collateral_price_update: Pubkey,
+    loan_price_update: Pubkey,
+    repay_assets: u64,
+    seize_collateral: u64,
+    callback_program: Pubkey,
+    callback_collateral_account: Pubkey,
+    extra_accounts: Vec<solana_instruction::AccountMeta>,
+    callback_data: Vec<u8>,
+) -> TransactionResult {
+    let ix = liquidate_with_callback_ix(
+        &liquidator.pubkey(),
+        market,
+        position,
+        fee_position,
+        loan_vault,
+        collateral_vault,
+        liquidator_loan_ata,
+        liquidator_collateral_ata,
+        loan_mint,
+        collateral_mint,
+        loan_token_program,
+        collateral_token_program,
+        collateral_price_update,
+        loan_price_update,
+        repay_assets,
+        seize_collateral,
+        callback_program,
+        callback_collateral_account,
+        extra_accounts,
+        callback_data,
+    );
+    let budget_ix = ComputeBudgetInstruction::set_compute_unit_limit(
+        LIQUIDATE_WITH_CALLBACK_COMPUTE_UNIT_LIMIT,
+    );
+    send_many(svm, liquidator, &[], vec![budget_ix, ix])
+}
+
+/// As `liquidate_with_callback_ix`, but with a caller-chosen compute unit limit instead of the
+/// generous default -- `A-CPI-03` needs a bounded outer limit to prove a compute-exhausting
+/// callback fails cleanly rather than merely "eventually", and needs it smaller than what a
+/// hostile callback's own burn loop will consume.
+#[allow(clippy::too_many_arguments)]
+pub fn liquidate_with_callback_and_compute_limit(
+    svm: &mut LiteSVM,
+    liquidator: &Keypair,
+    market: Pubkey,
+    position: Pubkey,
+    fee_position: Pubkey,
+    loan_vault: Pubkey,
+    collateral_vault: Pubkey,
+    liquidator_loan_ata: Pubkey,
+    liquidator_collateral_ata: Pubkey,
+    loan_mint: Pubkey,
+    collateral_mint: Pubkey,
+    loan_token_program: Pubkey,
+    collateral_token_program: Pubkey,
+    collateral_price_update: Pubkey,
+    loan_price_update: Pubkey,
+    repay_assets: u64,
+    seize_collateral: u64,
+    callback_program: Pubkey,
+    callback_collateral_account: Pubkey,
+    extra_accounts: Vec<solana_instruction::AccountMeta>,
+    callback_data: Vec<u8>,
+    compute_unit_limit: u32,
+) -> TransactionResult {
+    let ix = liquidate_with_callback_ix(
+        &liquidator.pubkey(),
+        market,
+        position,
+        fee_position,
+        loan_vault,
+        collateral_vault,
+        liquidator_loan_ata,
+        liquidator_collateral_ata,
+        loan_mint,
+        collateral_mint,
+        loan_token_program,
+        collateral_token_program,
+        collateral_price_update,
+        loan_price_update,
+        repay_assets,
+        seize_collateral,
+        callback_program,
+        callback_collateral_account,
+        extra_accounts,
+        callback_data,
+    );
+    let budget_ix = ComputeBudgetInstruction::set_compute_unit_limit(compute_unit_limit);
+    send_many(svm, liquidator, &[], vec![budget_ix, ix])
 }
 
 #[allow(clippy::too_many_arguments)]

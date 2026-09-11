@@ -136,8 +136,10 @@ fn create_market_spl_and_position_lifecycle() {
     assert_eq!(market.collateral_fee_accrued, 0);
     assert_eq!(market.flags, 0); // no freeze authority, no transfer-fee collateral
 
-    // U-ACCT-01 / U-ACCT-02.
-    assert_eq!(market._reserved, [0u8; 64]);
+    // U-ACCT-01 / U-ACCT-02. Phase 8 (ADR-0013) moved one byte from _reserved into
+    // liquidation_guard; both are zero on a freshly created market.
+    assert_eq!(market.liquidation_guard, 0);
+    assert_eq!(market._reserved, [0u8; 63]);
     let market_account = svm
         .get_account(&market_pubkey)
         .expect("market account exists");

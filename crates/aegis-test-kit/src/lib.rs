@@ -15,11 +15,12 @@ pub mod token_accounts;
 pub mod user_tokens;
 
 pub use market::{
-    accrue_interest, accrue_interest_ix, assert_aegis_error, borrow, borrow_ix, close_position,
-    close_position_ix, collateral_vault_pda, create_market, deposit_collateral,
-    deposit_collateral_ix, fetch_market, fetch_position, fetch_protocol, init_position,
-    initialize_protocol, loan_vault_pda, market_pda, position_pda, protocol_pda,
-    reference_market_args, repay, repay_ix, supply, supply_ix, withdraw, withdraw_collateral,
+    absorb_bad_debt, absorb_bad_debt_ix, accrue_interest, accrue_interest_ix, assert_aegis_error,
+    borrow, borrow_ix, close_position, close_position_ix, collateral_vault_pda, create_market,
+    deposit_collateral, deposit_collateral_ix, fetch_market, fetch_position, fetch_protocol,
+    init_position, initialize_protocol, liquidate, liquidate_ix, loan_vault_pda, market_pda,
+    position_pda, protocol_pda, reference_market_args, repay, repay_ix, supply, supply_ix,
+    withdraw, withdraw_collateral, withdraw_collateral_fees, withdraw_collateral_fees_ix,
     withdraw_collateral_ix, withdraw_ix,
 };
 pub use mints::{

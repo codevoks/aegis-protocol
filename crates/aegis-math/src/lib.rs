@@ -11,6 +11,7 @@ pub mod constants;
 pub mod fixed;
 pub mod health;
 pub mod irm;
+pub mod liquidation;
 pub mod shares;
 mod u256;
 
@@ -21,4 +22,8 @@ pub use health::{
     scale_to_wad_ceil, scale_to_wad_floor, HealthError, PriceBandWad, MAX_PRICE_WAD, MIN_PRICE_WAD,
 };
 pub use irm::{borrow_rate, taylor3, taylor_x, utilization};
+pub use liquidation::{
+    compute_liquidation_by_repay, compute_liquidation_by_seize, is_liquidatable, max_repay,
+    LiquidationError, LiquidationOutcome, LiquidationParams,
+};
 pub use shares::{to_assets_down, to_assets_up, to_shares_down, to_shares_up};

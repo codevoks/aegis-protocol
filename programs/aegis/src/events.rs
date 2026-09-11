@@ -148,3 +148,46 @@ pub struct InterestAccrued {
     pub total_borrow_assets: u64,
     pub total_supply_assets: u64,
 }
+
+/// `economic-model.md` §7.3, `instruction-catalogue.md` §17. `hf_before`/`hf_after` are the
+/// health factor immediately before and after this liquidation (`P-LIQ-1`'s on-chain evidence
+/// trail); `clamped` records whether the collateral-clamp path (`economic-model.md` §7.2) fired.
+#[event]
+pub struct Liquidated {
+    pub market: Pubkey,
+    pub position: Pubkey,
+    pub liquidator: Pubkey,
+    pub repay_assets: u64,
+    pub repay_shares: u128,
+    pub base_seize: u64,
+    pub total_seize: u64,
+    pub bonus_amount: u64,
+    pub protocol_cut: u64,
+    pub to_liquidator: u64,
+    pub clamped: bool,
+    pub hf_before: u128,
+    pub hf_after: u128,
+}
+
+/// `economic-model.md` §8.2, `instruction-catalogue.md` §18. `absorbed_by_protocol` is the debt
+/// absorbed by burning `fee_position.supply_shares` (protocol first-loss); `socialized` is the
+/// residual left to fall on `total_supply_assets`/lenders. `absorbed_by_protocol + socialized ==
+/// bad_assets` always.
+#[event]
+pub struct BadDebtAbsorbed {
+    pub market: Pubkey,
+    pub position: Pubkey,
+    pub bad_assets: u64,
+    pub absorbed_by_protocol: u64,
+    pub socialized: u64,
+    pub fee_shares_burned: u128,
+}
+
+/// `instruction-catalogue.md` §19.
+#[event]
+pub struct CollateralFeesWithdrawn {
+    pub market: Pubkey,
+    pub admin: Pubkey,
+    pub amount: u64,
+    pub remaining_collateral_fee_accrued: u64,
+}

@@ -25,6 +25,16 @@ pub fn require_exactly_one_amount(assets: u64, shares: u128) -> Result<()> {
     }
 }
 
+/// As [`require_exactly_one_amount`], for the two `u64` inputs of `liquidate(repay_assets,
+/// seize_collateral)` (`instruction-catalogue.md` §17).
+pub fn require_exactly_one_u64(a: u64, b: u64) -> Result<()> {
+    match (a == 0, b == 0) {
+        (true, true) => Err(error!(AegisError::ZeroAmount)),
+        (false, false) => Err(error!(AegisError::InconsistentInput)),
+        _ => Ok(()),
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -51,5 +61,20 @@ mod tests {
     fn guard_03_exactly_one_nonzero_is_accepted() {
         assert!(require_exactly_one_amount(1, 0).is_ok());
         assert!(require_exactly_one_amount(0, 1).is_ok());
+    }
+
+    // `liquidate(repay_assets, seize_collateral)`'s own exactly-one-of guard.
+    #[test]
+    fn require_exactly_one_u64_rejects_both_zero_and_both_nonzero() {
+        assert_eq!(
+            require_exactly_one_u64(0, 0).unwrap_err(),
+            anchor_lang::error::Error::from(AegisError::ZeroAmount)
+        );
+        assert_eq!(
+            require_exactly_one_u64(1, 1).unwrap_err(),
+            anchor_lang::error::Error::from(AegisError::InconsistentInput)
+        );
+        assert!(require_exactly_one_u64(1, 0).is_ok());
+        assert!(require_exactly_one_u64(0, 1).is_ok());
     }
 }

@@ -30,6 +30,15 @@ use solana_transaction_error::TransactionError;
 /// resource-allocation concern, not a security check -- INV-RES-01's 200k-budget measurement is
 /// explicitly Phase 11 (Performance) scope, not a Phase 5 acceptance criterion.
 const HIGHER_COMPUTE_UNIT_LIMIT: u32 = 400_000;
+/// `liquidate` is the most compute-heavy instruction in the protocol: it validates TWO oracle
+/// feeds (not one), accrues interest, computes conservative valuation and the health factor, and
+/// then runs the full liquidation math (`aegis_math::liquidation`) including the collateral-clamp
+/// branch, which performs several additional 256-bit `mul_div_*` divisions on top of the
+/// non-clamped path. `400_000` (sufficient for `borrow`/`repay`/`withdraw_collateral`) is not
+/// always sufficient here, measured directly against the clamp path during Phase 6 authoring; a
+/// real liquidator client must budget for the worst case. Resource-allocation, not a security
+/// check -- as `HIGHER_COMPUTE_UNIT_LIMIT`'s own doc comment states, INV-RES-01 is Phase 11 scope.
+const LIQUIDATE_COMPUTE_UNIT_LIMIT: u32 = 800_000;
 
 // --- PDA derivation, mirroring account-model.md exactly ---
 
@@ -145,6 +154,17 @@ fn send_priced(
     ix: Instruction,
 ) -> TransactionResult {
     let budget_ix = ComputeBudgetInstruction::set_compute_unit_limit(HIGHER_COMPUTE_UNIT_LIMIT);
+    send_many(svm, payer, extra_signers, vec![budget_ix, ix])
+}
+
+/// As `send_priced`, but with `LIQUIDATE_COMPUTE_UNIT_LIMIT` -- `liquidate`'s own, higher budget.
+fn send_liquidate(
+    svm: &mut LiteSVM,
+    payer: &Keypair,
+    extra_signers: &[&Keypair],
+    ix: Instruction,
+) -> TransactionResult {
+    let budget_ix = ComputeBudgetInstruction::set_compute_unit_limit(LIQUIDATE_COMPUTE_UNIT_LIMIT);
     send_many(svm, payer, extra_signers, vec![budget_ix, ix])
 }
 
@@ -700,6 +720,176 @@ pub fn accrue_interest(
 ) -> TransactionResult {
     let ix = accrue_interest_ix(market, fee_position);
     send(svm, payer, &[], ix)
+}
+
+// --- liquidate ---
+
+#[allow(clippy::too_many_arguments)]
+pub fn liquidate_ix(
+    liquidator: &Pubkey,
+    market: Pubkey,
+    position: Pubkey,
+    fee_position: Pubkey,
+    loan_vault: Pubkey,
+    collateral_vault: Pubkey,
+    liquidator_loan_ata: Pubkey,
+    liquidator_collateral_ata: Pubkey,
+    loan_mint: Pubkey,
+    collateral_mint: Pubkey,
+    loan_token_program: Pubkey,
+    collateral_token_program: Pubkey,
+    collateral_price_update: Pubkey,
+    loan_price_update: Pubkey,
+    repay_assets: u64,
+    seize_collateral: u64,
+) -> Instruction {
+    Instruction {
+        program_id: aegis::ID,
+        accounts: aegis::accounts::Liquidate {
+            liquidator: *liquidator,
+            market,
+            position,
+            fee_position,
+            loan_vault,
+            collateral_vault,
+            liquidator_loan_ata,
+            liquidator_collateral_ata,
+            loan_mint,
+            collateral_mint,
+            loan_token_program,
+            collateral_token_program,
+            collateral_price_update,
+            loan_price_update,
+        }
+        .to_account_metas(None),
+        data: aegis::instruction::Liquidate {
+            repay_assets,
+            seize_collateral,
+        }
+        .data(),
+    }
+}
+
+#[allow(clippy::too_many_arguments)]
+pub fn liquidate(
+    svm: &mut LiteSVM,
+    liquidator: &Keypair,
+    market: Pubkey,
+    position: Pubkey,
+    fee_position: Pubkey,
+    loan_vault: Pubkey,
+    collateral_vault: Pubkey,
+    liquidator_loan_ata: Pubkey,
+    liquidator_collateral_ata: Pubkey,
+    loan_mint: Pubkey,
+    collateral_mint: Pubkey,
+    loan_token_program: Pubkey,
+    collateral_token_program: Pubkey,
+    collateral_price_update: Pubkey,
+    loan_price_update: Pubkey,
+    repay_assets: u64,
+    seize_collateral: u64,
+) -> TransactionResult {
+    let ix = liquidate_ix(
+        &liquidator.pubkey(),
+        market,
+        position,
+        fee_position,
+        loan_vault,
+        collateral_vault,
+        liquidator_loan_ata,
+        liquidator_collateral_ata,
+        loan_mint,
+        collateral_mint,
+        loan_token_program,
+        collateral_token_program,
+        collateral_price_update,
+        loan_price_update,
+        repay_assets,
+        seize_collateral,
+    );
+    // Oracle-validated for TWO feeds plus the full liquidation math (including the
+    // collateral-clamp branch) -- `liquidate`'s own, higher compute budget.
+    send_liquidate(svm, liquidator, &[], ix)
+}
+
+// --- absorb_bad_debt ---
+
+pub fn absorb_bad_debt_ix(market: Pubkey, position: Pubkey, fee_position: Pubkey) -> Instruction {
+    Instruction {
+        program_id: aegis::ID,
+        accounts: aegis::accounts::AbsorbBadDebt {
+            market,
+            position,
+            fee_position,
+        }
+        .to_account_metas(None),
+        data: aegis::instruction::AbsorbBadDebt {}.data(),
+    }
+}
+
+/// Permissionless: any funded keypair can pay for and submit this transaction.
+pub fn absorb_bad_debt(
+    svm: &mut LiteSVM,
+    payer: &Keypair,
+    market: Pubkey,
+    position: Pubkey,
+    fee_position: Pubkey,
+) -> TransactionResult {
+    let ix = absorb_bad_debt_ix(market, position, fee_position);
+    send(svm, payer, &[], ix)
+}
+
+// --- withdraw_collateral_fees ---
+
+#[allow(clippy::too_many_arguments)]
+pub fn withdraw_collateral_fees_ix(
+    admin: &Pubkey,
+    market: Pubkey,
+    collateral_vault: Pubkey,
+    admin_collateral_ata: Pubkey,
+    collateral_mint: Pubkey,
+    collateral_token_program: Pubkey,
+    amount: u64,
+) -> Instruction {
+    let (protocol, _) = protocol_pda();
+    Instruction {
+        program_id: aegis::ID,
+        accounts: aegis::accounts::WithdrawCollateralFees {
+            admin: *admin,
+            protocol,
+            market,
+            collateral_vault,
+            admin_collateral_ata,
+            collateral_mint,
+            collateral_token_program,
+        }
+        .to_account_metas(None),
+        data: aegis::instruction::WithdrawCollateralFees { amount }.data(),
+    }
+}
+
+#[allow(clippy::too_many_arguments)]
+pub fn withdraw_collateral_fees(
+    svm: &mut LiteSVM,
+    admin: &Keypair,
+    market: Pubkey,
+    collateral_vault: Pubkey,
+    admin_collateral_ata: Pubkey,
+    collateral_mint: Pubkey,
+    collateral_token_program: Pubkey,
+    amount: u64,
+) -> TransactionResult {
+    let ix = withdraw_collateral_fees_ix(
+        &admin.pubkey(),
+        market,
+        collateral_vault,
+        admin_collateral_ata,
+        collateral_mint,
+        collateral_token_program,
+        amount,
+    );
+    send(svm, admin, &[], ix)
 }
 
 // --- account fetch/decode ---

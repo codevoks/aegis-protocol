@@ -6,11 +6,14 @@
 # enumerated instructions that are supposed to move tokens (account-model.md §6.3 enumerates the
 # complete, six-path custody surface). Phase 3 added the two collateral paths
 # (`deposit_collateral`/`withdraw_collateral`); Phase 4 added the three loan-side paths that move
-# real tokens (`supply`, `withdraw`, `repay`); Phase 5 enables the real, oracle-validated `borrow`
-# path (`loan_vault -> owner`, account-model.md §6.3's fourth row), so `borrow.rs` now legitimately
-# joins the outbound allowlist below. A call to `transfer_checked_out`/`transfer_checked_in`
-# anywhere else, or a raw `token_interface::transfer_checked` call bypassing both helpers, would be
-# a new, unaudited custody path.
+# real tokens (`supply`, `withdraw`, `repay`); Phase 5 enabled the real, oracle-validated `borrow`
+# path (`loan_vault -> owner`, account-model.md §6.3's fourth row). Phase 6 adds the final two
+# rows of that same table: `liquidate` moves tokens on BOTH directions in one instruction
+# (`liquidator -> loan_vault` inbound repayment, `collateral_vault -> liquidator` outbound
+# seizure), and `withdraw_collateral_fees` adds `collateral_vault -> admin` outbound — completing
+# all six enumerated paths. A call to `transfer_checked_out`/`transfer_checked_in` anywhere else,
+# or a raw `token_interface::transfer_checked` call bypassing both helpers, would be a new,
+# unaudited custody path.
 set -euo pipefail
 
 cd "$(dirname "${BASH_SOURCE[0]}")/.."
@@ -18,16 +21,19 @@ cd "$(dirname "${BASH_SOURCE[0]}")/.."
 fail=0
 
 allowed_out_callers=$(cat <<'EOF'
+programs/aegis/src/instructions/admin/withdraw_collateral_fees.rs
 programs/aegis/src/instructions/borrow/borrow.rs
 programs/aegis/src/instructions/collateral/withdraw_collateral.rs
 programs/aegis/src/instructions/lend/withdraw.rs
+programs/aegis/src/instructions/liquidate/liquidate.rs
 EOF
 )
 
 allowed_in_callers=$(cat <<'EOF'
+programs/aegis/src/instructions/borrow/repay.rs
 programs/aegis/src/instructions/collateral/deposit_collateral.rs
 programs/aegis/src/instructions/lend/supply.rs
-programs/aegis/src/instructions/borrow/repay.rs
+programs/aegis/src/instructions/liquidate/liquidate.rs
 EOF
 )
 

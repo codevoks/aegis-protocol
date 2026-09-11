@@ -57,6 +57,20 @@ pub enum AegisError {
     // ---- 6080-6099: Liquidation ----
     #[msg("liq_threshold * (WAD + liq_bonus) / WAD must be strictly less than WAD (INV-LIQ-06)")]
     LiquidationBonusExceedsThresholdBound = 80,
+    #[msg("INV-LIQ-01/INV-SOLV-02: position health factor is not strictly below WAD (HF == WAD is NOT liquidatable)")]
+    NotLiquidatable,
+    #[msg("repay_assets exceeds max_repay (close factor / dust rule / full-liquidation bound)")]
+    RepayExceedsMaxRepay,
+    #[msg("seize_collateral exceeds position.collateral_amount")]
+    SeizeExceedsCollateral,
+    #[msg("liquidate requires collateral_amount > 0 and borrow_shares > 0")]
+    NothingToLiquidate,
+    #[msg("absorb_bad_debt requires position.collateral_amount to be exactly zero")]
+    BadDebtRequiresZeroCollateral,
+    #[msg("absorb_bad_debt requires position.borrow_shares > 0")]
+    BadDebtRequiresOutstandingDebt,
+    #[msg("amount exceeds market.collateral_fee_accrued")]
+    InsufficientCollateralFees,
 
     // ---- 6100-6119: Token / extension policy ----
     #[msg("Mint account owner does not match the supplied token program")]
@@ -138,6 +152,20 @@ impl From<aegis_math::HealthError> for AegisError {
             aegis_math::HealthError::PriceNotPositive => AegisError::OraclePriceNotPositive,
             aegis_math::HealthError::ConfidenceTooWide => AegisError::OracleConfidenceTooWide,
             aegis_math::HealthError::PriceOutOfBounds => AegisError::OraclePriceOutOfBounds,
+        }
+    }
+}
+
+impl From<aegis_math::LiquidationError> for AegisError {
+    fn from(err: aegis_math::LiquidationError) -> Self {
+        match err {
+            aegis_math::LiquidationError::Overflow => AegisError::ArithmeticOverflow,
+            aegis_math::LiquidationError::DivisionByZero => AegisError::DivisionByZero,
+            aegis_math::LiquidationError::ZeroRepay => AegisError::ZeroAmount,
+            aegis_math::LiquidationError::RepayExceedsMaxRepay => AegisError::RepayExceedsMaxRepay,
+            aegis_math::LiquidationError::SeizeExceedsCollateral => {
+                AegisError::SeizeExceedsCollateral
+            }
         }
     }
 }

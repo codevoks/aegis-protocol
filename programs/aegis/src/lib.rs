@@ -36,6 +36,7 @@ pub mod token;
 // public re-export; it is only ever called through a fully qualified path below.
 use instructions::admin::create_market::*;
 use instructions::admin::initialize_protocol::*;
+use instructions::admin::withdraw_collateral_fees::*;
 use instructions::borrow::accrue::*;
 use instructions::borrow::borrow::*;
 use instructions::borrow::repay::*;
@@ -43,6 +44,8 @@ use instructions::collateral::deposit_collateral::*;
 use instructions::collateral::withdraw_collateral::*;
 use instructions::lend::supply::*;
 use instructions::lend::withdraw::*;
+use instructions::liquidate::absorb_bad_debt::*;
+use instructions::liquidate::liquidate::*;
 use instructions::position::close_position::*;
 use instructions::position::init_position::*;
 
@@ -123,6 +126,36 @@ pub mod aegis {
     /// a successful no-op.
     pub fn accrue_interest(ctx: Context<AccrueInterest>) -> Result<()> {
         instructions::borrow::accrue::handler(ctx)
+    }
+
+    /// Liquidates an unhealthy position: strict `HF < WAD` (E-12), close-factor/dust-rule
+    /// `max_repay`, seizure with the collateral clamp, liquidation bonus, and the protocol's cut
+    /// taken from the bonus only (`instruction-catalogue.md` §17, `economic-model.md` §7).
+    /// Exactly one of `repay_assets`/`seize_collateral` must be nonzero; the other is derived.
+    pub fn liquidate(
+        ctx: Context<Liquidate>,
+        repay_assets: u64,
+        seize_collateral: u64,
+    ) -> Result<()> {
+        instructions::liquidate::liquidate::handler(ctx, repay_assets, seize_collateral)
+    }
+
+    /// Recognizes bad debt on a fully-seized (`collateral_amount == 0`) position: protocol fee
+    /// shares absorb the loss first, then the residual is socialized across lenders
+    /// (`instruction-catalogue.md` §18, `economic-model.md` §8.2). Permissionless, no oracle,
+    /// unpausable, moves no tokens.
+    pub fn absorb_bad_debt(ctx: Context<AbsorbBadDebt>) -> Result<()> {
+        instructions::liquidate::absorb_bad_debt::handler(ctx)
+    }
+
+    /// Admin withdrawal of protocol-owned accrued collateral fees only, bounded by
+    /// `market.collateral_fee_accrued` (`instruction-catalogue.md` §19) — structurally incapable
+    /// of touching user collateral (INV-ADM-01, `A-ADM-02`).
+    pub fn withdraw_collateral_fees(
+        ctx: Context<WithdrawCollateralFees>,
+        amount: u64,
+    ) -> Result<()> {
+        instructions::admin::withdraw_collateral_fees::handler(ctx, amount)
     }
 }
 

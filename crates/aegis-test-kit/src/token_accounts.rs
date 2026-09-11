@@ -28,3 +28,16 @@ pub fn fetch_mint_extension_types(svm: &LiteSVM, mint: &Pubkey) -> Vec<Extension
         .get_extension_types()
         .expect("parseable extension list")
 }
+
+/// The mint's `decimals` field, read directly from the mint account — for `U-TOK-03`
+/// (`docs/token-compatibility.md` §5.5: `market.collateral_decimals`/`loan_decimals` must equal
+/// this value at creation, and it can never go stale because decimals are immutable in both token
+/// programs). Uses the same base-layout unpack `fetch_token_account_base` uses for accounts: a
+/// Token-2022 mint's `decimals` byte lives at the identical offset within `SplMint::LEN` whether
+/// or not the mint carries any extensions.
+pub fn fetch_mint_decimals(svm: &LiteSVM, mint: &Pubkey) -> u8 {
+    let account = svm.get_account(mint).expect("mint account must exist");
+    SplMint::unpack(&account.data[..SplMint::LEN])
+        .expect("valid base mint layout")
+        .decimals
+}

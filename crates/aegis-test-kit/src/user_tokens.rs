@@ -72,6 +72,57 @@ pub fn create_token_account(
     account_pubkey
 }
 
+/// Creates a standalone Token-2022 account carrying `ImmutableOwner`, owned by `owner` — the same
+/// `create_account` + `InitializeImmutableOwner` + `InitializeAccount3` sequence
+/// `token/vault.rs` uses for Aegis's own vaults, exposed here so a test can verify the extension's
+/// real behavior (`immutable_owner_blocks_reassignment_even_by_the_genuine_current_owner`,
+/// `docs/phases/phase-07-token2022.md` item 10) against an account it genuinely owns and can sign
+/// for, rather than against Aegis's vault (whose real authority is an unsignable PDA).
+pub fn create_immutable_owner_account(
+    svm: &mut LiteSVM,
+    payer: &Keypair,
+    seed: u8,
+    mint: Pubkey,
+    owner: Pubkey,
+) -> Pubkey {
+    let account = Keypair::new_from_array([seed; 32]);
+    let account_pubkey = account.pubkey();
+    let space = ExtensionType::try_calculate_account_len::<SplTokenAccount>(&[
+        ExtensionType::ImmutableOwner,
+    ])
+    .expect("ImmutableOwner must be representable");
+    let lamports = svm.minimum_balance_for_rent_exemption(space);
+
+    let create_ix = solana_system_interface::instruction::create_account(
+        &payer.pubkey(),
+        &account_pubkey,
+        lamports,
+        space as u64,
+        &spl_token_2022_interface::ID,
+    );
+    let init_immutable_owner_ix =
+        spl_token_2022_interface::instruction::initialize_immutable_owner(
+            &spl_token_2022_interface::ID,
+            &account_pubkey,
+        )
+        .expect("valid initialize_immutable_owner instruction");
+    let init_account_ix = spl_token_2022_interface::instruction::initialize_account3(
+        &spl_token_2022_interface::ID,
+        &account_pubkey,
+        &mint,
+        &owner,
+    )
+    .expect("valid initialize_account3 instruction");
+
+    send(
+        svm,
+        payer,
+        &[&account],
+        vec![create_ix, init_immutable_owner_ix, init_account_ix],
+    );
+    account_pubkey
+}
+
 /// Mints `amount` of `mint` into `destination`, signed by `mint_authority`.
 pub fn mint_to(
     svm: &mut LiteSVM,

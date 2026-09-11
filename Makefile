@@ -42,20 +42,21 @@ fuzz:
 bench:
 	@echo "not implemented until Phase 11 (performance)"
 
-## Phase 6 demo: SOL crashes to $95.00, a position becomes liquidatable and is liquidated for the
-## exact economic-model.md §7.5 figures (seizure, bonus, protocol cut); a second position is
-## crashed to $40.00, its collateral fully seized by the clamp with debt remaining, and the
-## resulting bad debt is absorbed with real protocol fee shares burned FIRST before the residual
-## is socialized — a lender then withdraws and realizes the loss directly. See
-## docs/phases/phase-06-liquidation.md "Demo". Zero-cost, offline, in-process LiteSVM; byte-exact
-## PriceUpdateV2 fixtures via the real pyth-solana-receiver-sdk, no Hermes, no Pyth program deploy.
-## Earlier phase demos remain runnable directly:
+## Phase 7 demo: two side-by-side markets, one classic SPL collateral, one Token-2022
+## transfer-fee (2%) collateral, run through an identical supply/deposit/borrow/accrue/liquidate/
+## withdraw lifecycle, printing requested vs. credited (and the fee) at every collateral transfer
+## so the reconciliation is visible; ends with the verified extension-policy rejection table
+## (real create_market attempts against TransferHook/PermanentDelegate/MintCloseAuthority/
+## DefaultAccountState=Frozen/Pausable/NonTransferable/an unrecognized discriminant/a transfer-fee
+## loan asset). See docs/phases/phase-07-token2022.md "Demo". Zero-cost, offline, in-process
+## LiteSVM. Earlier phase demos remain runnable directly:
 ## `cargo run -p aegis-test-kit --example phase2_demo`
 ## `cargo run -p aegis-test-kit --example phase3_demo`
 ## `cargo run -p aegis-test-kit --example phase4_demo`
 ## `cargo run -p aegis-test-kit --example phase5_demo`
+## `cargo run -p aegis-test-kit --example phase6_demo`
 demo: build
-	cargo run -p aegis-test-kit --example phase6_demo
+	cargo run -p aegis-test-kit --example phase7_demo
 
 ## UI against local Surfpool — Phase 9.
 app:

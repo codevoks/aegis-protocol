@@ -17,7 +17,11 @@ use solana_pubkey::Pubkey;
 use solana_signer::Signer;
 use solana_transaction::versioned::VersionedTransaction;
 use spl_token_2022_interface::extension::default_account_state::instruction::initialize_default_account_state;
-use spl_token_2022_interface::extension::transfer_fee::instruction::initialize_transfer_fee_config;
+use spl_token_2022_interface::extension::pausable::instruction::initialize as initialize_pausable;
+use spl_token_2022_interface::extension::transfer_fee::instruction::{
+    initialize_transfer_fee_config, set_transfer_fee,
+};
+pub use spl_token_2022_interface::extension::transfer_fee::TransferFeeConfig;
 use spl_token_2022_interface::extension::transfer_hook::instruction::initialize as initialize_transfer_hook;
 use spl_token_2022_interface::extension::{
     BaseStateWithExtensions, BaseStateWithExtensionsMut, ExtensionType, StateWithExtensions,
@@ -25,7 +29,7 @@ use spl_token_2022_interface::extension::{
 };
 use spl_token_2022_interface::instruction::{
     initialize_mint2 as initialize_mint2_2022, initialize_mint_close_authority,
-    initialize_permanent_delegate,
+    initialize_non_transferable_mint, initialize_permanent_delegate,
 };
 use spl_token_2022_interface::state::{AccountState, Mint as SplMint};
 use spl_token_interface::instruction::initialize_mint2 as initialize_mint2_legacy;
@@ -46,6 +50,13 @@ pub enum Token2022Extension {
     DefaultAccountStateFrozen,
     /// Tier C — `A-TOK-01`.
     TransferHook(Pubkey),
+    /// Tier C — RV-5 (Phase 7): `docs/token-compatibility.md` §2. Present in the exact resolved
+    /// `spl-token-2022-interface` 2.1.0 dependency (unlike older, pre-2024 extension lists) and
+    /// rejected for the same reason as `DefaultAccountState = Frozen`: the mint authority can halt
+    /// all transfers, which would make liquidation impossible exactly when it is needed most.
+    Pausable(Pubkey),
+    /// Tier C — RV-5 (Phase 7). Cannot be moved into or out of a vault at all.
+    NonTransferable,
 }
 
 fn extension_type_of(extension: &Token2022Extension) -> ExtensionType {
@@ -55,6 +66,8 @@ fn extension_type_of(extension: &Token2022Extension) -> ExtensionType {
         Token2022Extension::MintCloseAuthority(_) => ExtensionType::MintCloseAuthority,
         Token2022Extension::DefaultAccountStateFrozen => ExtensionType::DefaultAccountState,
         Token2022Extension::TransferHook(_) => ExtensionType::TransferHook,
+        Token2022Extension::Pausable(_) => ExtensionType::Pausable,
+        Token2022Extension::NonTransferable => ExtensionType::NonTransferable,
     }
 }
 
@@ -91,6 +104,10 @@ fn init_instruction(
             Some(*mint_authority),
             Some(*hook_program),
         ),
+        Token2022Extension::Pausable(authority) => {
+            initialize_pausable(&program_id, mint, authority)
+        }
+        Token2022Extension::NonTransferable => initialize_non_transferable_mint(&program_id, mint),
     }
     .expect("valid extension-init instruction")
 }
@@ -261,4 +278,60 @@ pub fn create_token_2022_mint_with_unrecognized_extension(
     .expect("failed to inject synthetic mint fixture");
 
     mint_pubkey
+}
+
+/// Changes `mint`'s transfer fee rate via the real `SetTransferFee` instruction, signed by
+/// `fee_authority` (`transfer_fee_config_authority` from `initialize_transfer_fee_config`).
+///
+/// **Real Token-2022 semantics, not a shortcut**: `set_transfer_fee` does not take effect
+/// immediately. It writes a `newer_transfer_fee` whose `epoch` is set by the token program to
+/// `current_epoch + 2` (`TransferFeeConfig::get_epoch_fee`, `spl-token-2022-interface` 2.1.0):
+/// the *old* rate (`older_transfer_fee`) still applies to any transfer processed before that
+/// epoch arrives — a deliberate MEV-resistance delay so a fee change cannot be sprung on a
+/// transaction already in flight. [`advance_epoch`] must be called afterward for the new rate to
+/// take effect on a subsequent transfer, exactly as it would on a real cluster.
+pub fn set_transfer_fee_rate(
+    svm: &mut LiteSVM,
+    payer: &Keypair,
+    mint: Pubkey,
+    fee_authority: &Keypair,
+    new_basis_points: u16,
+    new_maximum_fee: u64,
+) {
+    let ix = set_transfer_fee(
+        &spl_token_2022_interface::ID,
+        &mint,
+        &fee_authority.pubkey(),
+        &[],
+        new_basis_points,
+        new_maximum_fee,
+    )
+    .expect("valid set_transfer_fee instruction");
+    let extra_signers: &[&Keypair] = if fee_authority.pubkey() == payer.pubkey() {
+        &[]
+    } else {
+        &[fee_authority]
+    };
+    send(svm, payer, extra_signers, vec![ix]);
+}
+
+/// Reads back `mint`'s current `TransferFeeConfig` extension state (both the `older_transfer_fee`
+/// and `newer_transfer_fee` epoch-gated entries), so a test or demo can print the effective rate
+/// before and after a [`set_transfer_fee_rate`] call.
+pub fn fetch_transfer_fee_config(svm: &LiteSVM, mint: &Pubkey) -> TransferFeeConfig {
+    let account = svm.get_account(mint).expect("mint account must exist");
+    *StateWithExtensions::<SplMint>::unpack(&account.data)
+        .expect("valid mint account")
+        .get_extension::<TransferFeeConfig>()
+        .expect("mint must carry TransferFeeConfig")
+}
+
+/// Advances the `Clock` sysvar's `epoch` by `epochs`, leaving `unix_timestamp` and everything else
+/// unchanged — the LiteSVM equivalent of waiting out Token-2022's 2-epoch transfer-fee-change
+/// delay (see [`set_transfer_fee_rate`]). Uses the same direct-sysvar-mutation technique already
+/// used elsewhere in this test-kit for `unix_timestamp` warps (e.g. `tests/phase6_integration.rs`).
+pub fn advance_epoch(svm: &mut LiteSVM, epochs: u64) {
+    let mut clock = svm.get_sysvar::<solana_clock::Clock>();
+    clock.epoch += epochs;
+    svm.set_sysvar(&clock);
 }

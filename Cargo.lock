@@ -39,8 +39,13 @@ dependencies = [
  "aegis-math",
  "anchor-lang",
  "anchor-spl",
+ "base64 0.22.1",
+ "example-liquidator",
+ "hex",
+ "hostile-callback",
  "litesvm",
  "pyth-solana-receiver-sdk",
+ "serde_json",
  "solana-account",
  "solana-clock",
  "solana-compute-budget-interface",
@@ -67,7 +72,10 @@ dependencies = [
  "aegis-math",
  "aegis-test-kit",
  "anchor-lang",
+ "example-liquidator",
+ "hostile-callback",
  "litesvm",
+ "serde_json",
  "solana-account",
  "solana-clock",
  "solana-instruction",
@@ -1399,6 +1407,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "example-liquidator"
+version = "0.1.0"
+dependencies = [
+ "anchor-lang",
+ "anchor-spl",
+]
+
+[[package]]
 name = "fast-math"
 version = "0.1.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1641,6 +1657,14 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "6c49c37c09c17a53d937dfbb742eb3a961d65a994e6bcdcf37e7399d0cc8ab5e"
 dependencies = [
  "digest 0.10.7",
+]
+
+[[package]]
+name = "hostile-callback"
+version = "0.1.0"
+dependencies = [
+ "anchor-lang",
+ "anchor-spl",
 ]
 
 [[package]]

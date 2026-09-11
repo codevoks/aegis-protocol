@@ -11,9 +11,12 @@
 # rows of that same table: `liquidate` moves tokens on BOTH directions in one instruction
 # (`liquidator -> loan_vault` inbound repayment, `collateral_vault -> liquidator` outbound
 # seizure), and `withdraw_collateral_fees` adds `collateral_vault -> admin` outbound — completing
-# all six enumerated paths. A call to `transfer_checked_out`/`transfer_checked_in` anywhere else,
-# or a raw `token_interface::transfer_checked` call bypassing both helpers, would be a new,
-# unaudited custody path.
+# all six enumerated paths. Phase 8 (ADR-0013) adds a seventh row to the same table
+# (`collateral_vault -> callback_collateral_account`), but it is a new *destination* on the
+# existing `liquidate` outbound call site, not a new file or a new call to audit here. A call to
+# `transfer_checked_out`/`transfer_checked_in` anywhere else, or a raw
+# `token_interface::transfer_checked` call bypassing both helpers, would be a new, unaudited
+# custody path.
 set -euo pipefail
 
 cd "$(dirname "${BASH_SOURCE[0]}")/.."

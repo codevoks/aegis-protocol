@@ -9,7 +9,13 @@ description = "Workspace root; hosts the zero-cost offline smoke test (tests/smo
 
 [workspace]
 resolver = "2"
-members = ["programs/aegis", "crates/aegis-math", "crates/aegis-test-kit"]
+members = [
+    "programs/aegis",
+    "crates/aegis-math",
+    "crates/aegis-test-kit",
+    "labs/example-liquidator",
+    "labs/hostile-callback",
+]
 
 [workspace.package]
 edition = "2021"
@@ -23,6 +29,12 @@ rust-version = "1.85.0"
 aegis = { path = "programs/aegis" }
 aegis-math = { path = "crates/aegis-math" }
 aegis-test-kit = { path = "crates/aegis-test-kit" }
+# Phase 8: `cpi` feature (`no-entrypoint`) so these compile as ordinary libraries here rather than
+# pulling in a second `entrypoint!` into the test binary -- the tests load their real, separately
+# built `.so` bytes into LiteSVM directly; this dependency exists only for typed `ID`/
+# `instruction::*`/`accounts::*` access when building instructions against them.
+example-liquidator = { path = "labs/example-liquidator", features = ["cpi"] }
+hostile-callback = { path = "labs/hostile-callback", features = ["cpi"] }
 anchor-lang = "1.2.0"
 litesvm = "0.16"
 # Pinned to the major versions litesvm 0.16.0 itself resolves (verified via its own
@@ -41,6 +53,13 @@ solana-transaction-error = "3"
 # (docs/phases/phase-04-lending.md "One-year dormant market test": "Do not use real wall-clock
 # waiting").
 solana-clock = "3"
+# Phase 8, tests/network/jupiter_route.rs (N-JUP-01) ONLY: parses the real Jupiter Swap API's JSON
+# responses. Already a transitive dependency of this workspace (verified in Cargo.lock before
+# adding it directly) -- promoting it to a direct dev-dependency adds zero new crates to the
+# supply chain. The HTTP calls themselves shell out to `curl` (already required by `setup`'s own
+# toolchain expectations) rather than adding an HTTP client crate, per AGENTS.md §10's preference
+# for the smallest dependency footprint that does the job.
+serde_json = "1"
 
 # overflow-checks = true is the single most important line in this file (T-16). Release
 # builds do not check arithmetic overflow by default; without this, the entire arithmetic

@@ -133,6 +133,20 @@ pub enum AegisError {
     InvalidPositionOwner = 140,
     #[msg("close_position requires supply_shares, borrow_shares and collateral_amount to be exactly zero")]
     PositionNotEmpty,
+
+    // ---- 6160-6179: Composability / callback (Phase 8, docs/composability.md, ADR-0013) ----
+    #[msg("A liquidation callback is already in flight on this market (A-CPI-02, protocol-level guard)")]
+    LiquidationCallbackReentrancy = 160,
+    #[msg("callback_program was supplied but is not marked executable")]
+    LiquidationCallbackNotExecutable,
+    #[msg("callback_collateral_account is required exactly when callback_program is supplied, and its mint must match market.collateral_mint")]
+    LiquidationCallbackAccountMismatch,
+    #[msg("a remaining account supplied to the liquidation callback aliases a protected Aegis account (INV-AUTH-07)")]
+    CallbackAccountNotPermitted,
+    #[msg(
+        "measured post-callback loan_vault delta is less than the required repayment (A-CPI-04)"
+    )]
+    LiquidationCallbackRepaymentShortfall,
 }
 
 impl From<aegis_math::MathError> for AegisError {

@@ -1,0 +1,27 @@
+{
+  "name": "@aegis/liquidator-bot",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Phase 8 liquidator keeper for Aegis Protocol -- scans positions, computes health off-chain (advisory only), and submits direct or callback liquidations.",
+  "type": "module",
+  "license": "Apache-2.0",
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "keeper": "tsx src/index.ts",
+    "fixtures": "cargo run -p aegis-test-kit --example phase8_price_fixture_dump --manifest-path ../../Cargo.toml -- fixtures/prices.json",
+    "demo": "npm run fixtures && tsx src/demo.ts"
+  },
+  "dependencies": {
+    "@anchor-lang/core": "1.2.0",
+    "@solana-program/compute-budget": "0.18.1",
+    "@solana-program/system": "0.14.1",
+    "@solana-program/token": "0.16.1",
+    "@solana/kit": "8.3.0"
+  },
+  "devDependencies": {
+    "@types/bn.js": "^5.2.0",
+    "@types/node": "^22.10.0",
+    "tsx": "^4.19.0",
+    "typescript": "^5.7.0"
+  }
+}

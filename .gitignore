@@ -57,6 +57,9 @@ pnpm-debug.log*
 benchmarks/*.raw
 benchmarks/tmp/
 
+# --- Phase 8 bot: regenerated (non-deterministic publish_time) by `npm run fixtures` ---
+bots/liquidator/fixtures/*.json
+
 # --- Coverage / fuzz artifacts ---
 coverage/
 fuzz/corpus/

@@ -254,7 +254,8 @@ pub fn handler(ctx: Context<CreateMarket>, args: CreateMarketArgs) -> Result<()>
     market.bump = ctx.bumps.market;
     market.collateral_vault_bump = collateral_vault_bump;
     market.loan_vault_bump = loan_vault_bump;
-    market._reserved = [0u8; 64];
+    market.liquidation_guard = 0;
+    market._reserved = [0u8; 63];
 
     let fee_position = &mut ctx.accounts.fee_position;
     fee_position.market = market_key;

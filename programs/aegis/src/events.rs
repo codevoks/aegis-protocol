@@ -152,6 +152,9 @@ pub struct InterestAccrued {
 /// `economic-model.md` §7.3, `instruction-catalogue.md` §17. `hf_before`/`hf_after` are the
 /// health factor immediately before and after this liquidation (`P-LIQ-1`'s on-chain evidence
 /// trail); `clamped` records whether the collateral-clamp path (`economic-model.md` §7.2) fired.
+/// `callback_program` is `None` for the Phase 6 path (`I-LIQ-CB-02`) and `Some(program_id)` when
+/// the Phase 8 callback branch ran — part of the permanent audit record of which liquidations used
+/// external composability (docs/composability.md).
 #[event]
 pub struct Liquidated {
     pub market: Pubkey,
@@ -167,6 +170,7 @@ pub struct Liquidated {
     pub clamped: bool,
     pub hf_before: u128,
     pub hf_after: u128,
+    pub callback_program: Option<Pubkey>,
 }
 
 /// `economic-model.md` §8.2, `instruction-catalogue.md` §18. `absorbed_by_protocol` is the debt

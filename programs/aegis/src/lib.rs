@@ -49,7 +49,7 @@ use instructions::liquidate::liquidate::*;
 use instructions::position::close_position::*;
 use instructions::position::init_position::*;
 
-declare_id!("2GtoBADM175vkjf5UYpbD198Ry1cJadXMGo8sCQvXndh");
+declare_id!("DbRhjkZV1QSxMj5AvrYdgVsyEz8nKhoCLnSLGSKsqaF9");
 
 #[program]
 pub mod aegis {
@@ -132,12 +132,23 @@ pub mod aegis {
     /// `max_repay`, seizure with the collateral clamp, liquidation bonus, and the protocol's cut
     /// taken from the bonus only (`instruction-catalogue.md` §17, `economic-model.md` §7).
     /// Exactly one of `repay_assets`/`seize_collateral` must be nonzero; the other is derived.
-    pub fn liquidate(
-        ctx: Context<Liquidate>,
+    ///
+    /// Phase 8 (`docs/composability.md`, ADR-0013): `callback_program`/`callback_collateral_account`
+    /// are optional. Omitting both reproduces Phase 6 behavior exactly (`I-LIQ-CB-02`). When
+    /// supplied, `callback_data` is forwarded verbatim as the callback CPI's instruction data --
+    /// Aegis defines no schema for it.
+    pub fn liquidate<'info>(
+        ctx: Context<'info, Liquidate<'info>>,
         repay_assets: u64,
         seize_collateral: u64,
+        callback_data: Vec<u8>,
     ) -> Result<()> {
-        instructions::liquidate::liquidate::handler(ctx, repay_assets, seize_collateral)
+        instructions::liquidate::liquidate::handler(
+            ctx,
+            repay_assets,
+            seize_collateral,
+            callback_data,
+        )
     }
 
     /// Recognizes bad debt on a fully-seized (`collateral_amount == 0`) position: protocol fee

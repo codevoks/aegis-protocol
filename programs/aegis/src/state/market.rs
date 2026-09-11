@@ -65,7 +65,12 @@ pub struct Market {
     pub bump: u8,
     pub collateral_vault_bump: u8,
     pub loan_vault_bump: u8,
-    pub _reserved: [u8; 64],
+    /// Phase 8 (ADR-0013, `account-model.md` §4): `1` while a liquidation callback CPI is in
+    /// flight on this market, `0` otherwise. Checked unconditionally at the top of `liquidate`;
+    /// no other instruction reads or writes it. One byte moved out of `_reserved` — `Market::LEN`
+    /// is unchanged.
+    pub liquidation_guard: u8,
+    pub _reserved: [u8; 63],
 }
 
 impl Market {
@@ -75,13 +80,15 @@ impl Market {
     /// `account-model.md` §4 states this size approximately ("~633 ... ≈ 641"); this constant is
     /// the exact figure derived by summing the field list in that same section field-by-field,
     /// and is pinned by `U-ACCT-02` against the account actually produced by `create_market`.
+    /// ADR-0013 (Phase 8) added `liquidation_guard: u8` and shrank `_reserved` by one byte in the
+    /// same breath, so the flags/bumps subtotal (69) and the overall total (640) are unchanged.
     pub const LEN: usize = 8
         + (32 * 7 + 2 + 1 + 1) // identity: 228
         + (1 + 32 + 32 + 4 + 2) // oracle config: 71
         + (16 * 7 + 8) // risk params: 120
         + (16 * 5) // IRM params: 80
         + (8 + 16 + 8 + 16 + 8 + 8) // accounting: 64
-        + (1 + 1 + 1 + 1 + 1 + 64); // flags/bumps: 69
+        + (1 + 1 + 1 + 1 + 1 + 1 + 63); // flags/bumps: 69 (incl. liquidation_guard)
 
     /// Risk-parameter bounds from `economic-model.md` §5, including the derived liquidation
     /// bound `liq_threshold * (WAD + liq_bonus) / WAD < WAD` (INV-LIQ-06).
@@ -588,7 +595,8 @@ mod tests {
             bump: 0,
             collateral_vault_bump: 0,
             loan_vault_bump: 0,
-            _reserved: [0u8; 64],
+            liquidation_guard: 0,
+            _reserved: [0u8; 63],
         }
     }
 

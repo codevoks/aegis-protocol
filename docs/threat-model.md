@@ -264,12 +264,24 @@ Format: **Asset at risk · Attacker · Entry point · Prerequisite · Impact · 
 - **Test:** Not testable in-protocol.
 - **Residual:** **The single largest residual risk in Aegis, stated plainly.** No amount of in-program security compensates for it, and any claim that the protocol is "safe" without addressing it is false.
 
-### T-31 — Malicious external integration (Phase 8)
+### T-31 — Malicious external integration (Phase 8) — IMPLEMENTED AND TESTED
 - **Asset:** liquidator funds; protocol liveness · **Attacker:** callback target · **Entry:** liquidation callback · **Prereq:** liquidator supplies a hostile program
-- **Impact:** Reentrancy into Aegis; state read before the callback becoming stale after it; consuming the CU budget.
-- **Mitigation:** No signer forwarded (INV-AUTH-07); **all state re-read and all post-conditions re-verified after the callback returns**; the callback is opt-in per transaction; RV-6 (runtime reentrancy semantics) resolved before implementation.
-- **Test:** `A-CPI-01..04` — hostile callbacks that reenter, that consume CU, that return without repaying, and that attempt to move vault funds.
-- **Residual:** Contained to the calling liquidator, who chose the callback. Deferred entirely until Phase 8.
+- **Impact:** Reentrancy into Aegis; state read before the callback becoming stale after it; consuming the CU budget; the callback moving vault funds it was never authorized to touch.
+- **Mitigation:** No signer forwarded — the callback CPI's account-meta list never includes `market`
+  or `liquidator`, is dispatched with plain `invoke` (never `invoke_signed`), and every meta is
+  unconditionally `is_signer: false` (INV-AUTH-07, ADR-0013); **all state is re-read and all
+  post-conditions are re-verified after the callback returns**, including a per-`Market`
+  reentrancy guard (`market.liquidation_guard`) checked independent of runtime behavior; the
+  callback is opt-in per transaction (`I-LIQ-CB-02`); RV-6 (runtime reentrancy semantics) resolved
+  before implementation (`docs/ecosystem-research.md` §16.1: the current runtime already rejects
+  indirect CPI reentrancy on its own, but Aegis does not depend on that).
+- **Test:** `A-CPI-01..04` — hostile callbacks that attempt to reenter, that consume the CU budget,
+  that return `Ok(())` without repaying, and that attempt to move vault funds — all fail, and each
+  is proven to fail **atomically** (zero state diff), not merely "the transaction returned an
+  error" (`tests/phase8_hostile_callback.rs`). `A-AUTH-07` additionally inspects the actual
+  constructed `Vec<AccountMeta>` directly, not just the source that builds it.
+- **Residual:** Contained to the calling liquidator, who chose the callback. Implemented and tested
+  in Phase 8 (previously deferred).
 
 ### T-32 — Front-running protocol initialization
 - **Asset:** protocol control · **Attacker:** observer of the deploy · **Entry:** `initialize_protocol` · **Prereq:** program deployed but uninitialized

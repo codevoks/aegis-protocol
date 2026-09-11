@@ -1,6 +1,10 @@
 # Aegis — Composability Strategy
 
-**Status: FROZEN (Phase 0). Implementation in Phase 8.**
+**Status: FROZEN (Phase 0). Implemented in Phase 8** — see `docs/adr/0013-liquidation-callback-security-design.md`
+for the exact account contract and `docs/project-status.md`'s Phase 8 evidence section for what was
+built, tested, and demoed against this design. Every property this document commits to below (no
+signer forwarded, full post-CPI re-read, opt-in, a state-machine guard) holds in the shipped code,
+verified by `tests/phase8_composability.rs` and `tests/phase8_hostile_callback.rs`.
 
 > **Rule: an external integration enters Aegis only when it solves a product problem Aegis actually
 > has.** Breadth of integrations is not evidence of skill; a well-motivated integration with a clearly

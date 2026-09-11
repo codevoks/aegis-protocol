@@ -28,7 +28,7 @@ Column key — *Test*: `U-` unit, `P-` property, `A-` adversarial, `I-` integrat
 
 | ID | Invariant | Impl | Test | Phase |
 |---|---|---|---|---|
-| **INV-CUS-01** **[GLOBAL]** | `loan_vault.amount == total_supply_assets − total_borrow_assets` exactly, after every instruction. | all loan-side ix | `F-INV-01`, `I-CUS-01` | 4 |
+| **INV-CUS-01** **[GLOBAL]** | `loan_vault.amount == total_supply_assets − total_borrow_assets` exactly, after every instruction. **Phase 8 exception (ADR-0013):** a `liquidate` callback's measured repayment may exceed the exact required amount (§7 below permits ≥, never <), so `loan_vault.amount` may exceed this exact figure after a callback branch specifically — never fall short of it. The exact-equality form continues to hold, with no exception, for every non-callback instruction and for `liquidate`'s no-callback branch (`I-LIQ-CB-02`). | all loan-side ix | `F-INV-01`, `I-CUS-01` | 4 |
 | **INV-CUS-02** **[GLOBAL]** | `collateral_vault.amount == Σ(position.collateral_amount) + market.collateral_fee_accrued` exactly. | all collateral-side ix | `F-INV-02`, `I-CUS-02` | 3 |
 | INV-CUS-03 | Only the `Market` PDA is the token authority of `collateral_vault` and `loan_vault`, for the market's whole lifetime. | `create_market` | `A-CUS-03` | 2 |
 | INV-CUS-04 | Tokens leave a vault only via the six paths enumerated in `account-model.md` §6.3. No other code path invokes a token transfer with the market as signer. | code review + grep test | `A-CUS-04` | 13 |

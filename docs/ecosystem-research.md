@@ -413,9 +413,9 @@ because it is exactly the kind of detail a memorized pattern gets wrong silently
 | RV-3 | Upgraded Pyth receiver program ID and whether `PriceUpdateV2` is still the account type | Phase 5 | ✅ **RESOLVED** — see §15.1: address unchanged at `rec5EKMGg6MxZYaMdyBfgwp4d5rB9T1VQH5pJv5LtFJ`; `PriceUpdateV2` unchanged |
 | RV-4 | Exact `VerificationLevel` enum shape in `pyth-solana-receiver-sdk` 2.x | Phase 5 | ✅ **RESOLVED** — see §15.2: `enum VerificationLevel { Partial { num_signatures: u8 }, Full }` |
 | RV-5 | Complete current Token-2022 extension list, including any added after Jan 2024 (e.g. `Pausable`, `ScaledUiAmount`) and their discriminants | Phase 7 | ✅ **RESOLVED** (2026-09-11) — see `docs/token-compatibility.md` §0: `spl-token-2022-interface` 2.1.0, 27 real `ExtensionType` variants, all classified; `Pausable`/`ScaledUiAmount` both present and confirmed |
-| RV-6 | **Whether the Solana runtime permits `A → B → A` CPI reentrancy** (non-self-recursive). Aegis must not depend on the answer, but Phase 8's callback design must state it correctly. | Phase 8 | OPEN |
+| RV-6 | **Whether the Solana runtime permits `A → B → A` CPI reentrancy** (non-self-recursive). Aegis must not depend on the answer, but Phase 8's callback design must state it correctly. | Phase 8 | ✅ **RESOLVED** (2026-09-11) — see §16.1: rejected by the runtime (`InstructionError::ReentrancyNotAllowed`, `InvokeContext::push()`); Aegis's own guard is implemented and tested regardless |
 | RV-7 | Whether SIMD-0296 (4096-byte transactions) is active on the target cluster and supported by `@solana/kit` | Phase 9 | OPEN |
-| RV-8 | Current Jupiter API/program surface for liquidation routing | Phase 8 | OPEN |
+| RV-8 | Current Jupiter API/program surface for liquidation routing | Phase 8 | ✅ **RESOLVED** (2026-09-11) — see §16.2: Swap API (`api.jup.ag/swap/v1/quote` + `/swap-instructions`), v6 program `JUP6LkbZbjS1jKKwapdHNy74zcZ3tLUZoi5QNyVTaV4`, HTTP-only (no offline mode), reachable only via Surfpool mainnet-fork for the optional `N-JUP-01` tier |
 
 ---
 
@@ -579,3 +579,154 @@ evidence above. No ADR was required.
 Unchanged from Phase 1/2 (`rustc`/`cargo` 1.98.1, Agave CLI 3.1.10, `anchor-cli` 1.2.0, `avm`
 1.1.2) — re-verified by `anchor build` and `cargo test --workspace` succeeding. No toolchain delta
 this phase.
+
+---
+
+## 16. Phase 8 re-verification (2026-09-11) — RV-6 and RV-8 resolved
+
+Both gates were closed **before any callback code was written**, per `docs/phases/phase-08-
+composability.md`'s explicit research-gate requirement. Per `docs/composability.md` §2 and
+`AGENTS.md`, **Aegis's security does not depend on either answer** — the callback design already
+commits unconditionally to no signer forwarding, a full post-CPI state re-read, and a protocol-level
+reentrancy guard, regardless of what the runtime does or does not prevent on its own. These findings
+inform documentation and the `A-CPI-02` test design, not whether the defenses exist.
+
+### 16.1 RV-6 — CPI reentrancy (`A → B → A`)
+
+**Runtime/version context:** Agave (the current Solana validator client, successor to
+`solana-labs/solana`) `master` branch, `program-runtime` crate, cross-checked against the public
+docs at `solana.com/docs` (same rule stated for the currently shipping runtime). Local toolchain in
+this repository: `solana-cli 3.1.10 (src:7bc9c805; feat:1620780344, client:Agave)` (§ current
+`setup` output, unchanged from Phase 1/2/5).
+
+**Exact behavior found:**
+
+1. **Indirect, non-self-recursive reentrancy is rejected by the runtime.** `InvokeContext::push()`
+   (`program-runtime/src/invoke_context.rs`) checks whether the program being invoked already
+   appears anywhere in the current instruction stack (`contains`) and, if so, whether it is *not*
+   the immediate caller (`!is_last`):
+
+   ```rust
+   if contains && !is_last {
+       // Reentrancy not allowed unless caller is calling itself
+       return Err(InstructionError::ReentrancyNotAllowed);
+   }
+   ```
+
+   So the pattern this phase cares about — `Aegis (A) → callback (B) → Aegis (A)`, i.e. a hostile
+   callback trying to CPI back into `liquidate` — is **rejected by the runtime itself**, unconditionally,
+   with `InstructionError::ReentrancyNotAllowed`, before Aegis's own code ever runs again.
+2. **Direct self-recursion is explicitly allowed** (`contains && is_last` does not trip the guard):
+   a program may call itself, e.g. `A → A → A`, subject only to the call-depth limit below. This
+   does not apply to Aegis's threat model here since the attack of concern is *indirect* (through
+   the callback), not Aegis calling itself.
+3. **Call-depth limit.** The instruction stack is capped independently of the reentrancy check:
+   `MAX_INSTRUCTION_STACK_DEPTH = 5` on the currently shipping runtime, i.e. **4 levels of CPI**
+   beneath the top-level transaction instruction. (SIMD-0268 raises this to 9/8 on a future Agave
+   major version gated by a feature activation — not yet active on the cluster this repository
+   targets; Aegis's call graph for the callback path is `liquidate → callback` — depth 1 — so this
+   limit is nowhere close to binding either way.)
+4. **Account borrowing / runtime restrictions.** Independent of the reentrancy rule, the runtime
+   also rejects a CPI that would leave any account **already mutably borrowed** by an outer frame
+   (`AccountBorrowFailed`) — this is what would fire if a hostile callback tried to re-enter and
+   touch, e.g., the same `Market`/`Position` accounts Aegis is still holding open, even in a
+   hypothetical world where the reentrancy check above did not exist.
+5. **Signer propagation.** An account is a signer in the callee **iff** it was already a signer in
+   the caller, or it is a PDA whose seeds the *invoking* program supplied to `invoke_signed` for
+   *that specific CPI*. There is no mechanism by which a callee can promote an ordinary account to
+   signer status, and a program cannot cause an account to be treated as a signer for a *different*
+   program's future CPI merely by having received it as a signer itself — signer status is
+   re-derived fresh at every `invoke`/`invoke_signed` boundary from that call's own account metas.
+   This is exactly why Aegis's "no signer forwarding" rule (INV-AUTH-07) is enforceable by
+   **omission**: the callback CPI's account-meta list is constructed by Aegis, from scratch, with
+   every entry's `is_signer` explicit — nothing is "carried over" automatically from `Liquidate`'s
+   own accounts.
+6. **Duplicate account handling.** The runtime deduplicates identical pubkeys within a single
+   instruction's account list at the `serialize_parameters`/BPF-loader boundary (multiple metas for
+   the same key resolve to one underlying `AccountInfo`, with privileges being the union of what
+   each meta requested) — irrelevant to reentrancy directly, but relevant to why Aegis builds the
+   callback's account-meta list explicitly rather than slicing the original `Liquidate` account
+   list: passing the same account twice with different intended privilege would not "downgrade" it.
+
+**Primary sources:**
+- `anza-xyz/agave`, `program-runtime/src/invoke_context.rs`, `InvokeContext::push()` (fetched
+  2026-09-11; the reentrancy check and `InstructionError::ReentrancyNotAllowed` return quoted
+  above).
+- <https://solana.com/docs/core/cpi/cpi-execution> (fetched 2026-09-11) — restates the same rule in
+  prose: "a program may only call itself if it is the direct caller (i.e., program A can call A,
+  but A cannot call B which calls A)"; documents `MAX_INSTRUCTION_STACK_DEPTH = 5` (4 CPI levels)
+  on the current runtime and SIMD-0268's future increase to 9 (8 levels); documents the signer
+  propagation rule (`PrivilegeEscalation` on any attempted escalation beyond it).
+
+**Date:** 2026-09-11.
+
+**Implications for Aegis:** none of Aegis's defenses are weakened or strengthened by this finding —
+per `docs/composability.md` §2, the design already treats the runtime's reentrancy behavior as
+untrusted and enforces its own guard. What this finding *does* change is what `A-CPI-02` can prove:
+because the runtime itself rejects `Aegis → callback → Aegis` before Aegis's own reentrancy-guard
+check would even be reached, a naive `A-CPI-02` test that merely asserts "the reentrant call fails"
+would risk crediting the *protocol* guard for a failure the *runtime* already causes. `A-CPI-02` is
+therefore implemented with two distinct assertions — one demonstrating the runtime-level rejection
+(`InstructionError::ReentrancyNotAllowed`, surfaced as `ProgramFailedToComplete`/a custom CPI-call
+failure at the outer transaction level) by having the hostile callback attempt the CPI directly, and
+a second, direct unit-level test of Aegis's own guard flag (constructing the state the guard checks
+and asserting `AegisError::LiquidationCallbackReentrancy` fires) so the protocol-level defense is
+exercised independently of runtime behavior, exactly as `phase-08-composability.md` requires ("If
+runtime itself rejects first, design the test so the Aegis guard is still directly testable where
+feasible... Do not falsely attribute runtime rejection to the Aegis guard").
+
+### 16.2 RV-8 — Jupiter integration surface
+
+**Current authoritative options** (Jupiter's official developer docs, `developers.jup.ag` /
+`dev.jup.ag`, both canonical Jupiter domains; fetched 2026-09-11):
+
+1. **Ultra API** — the current recommended default for most integrators ("the spiritual successor
+   to Swap API... much simpler to use"). It returns an already-assembled, ready-to-sign transaction
+   and does not expose raw instructions for custom CPI composition.
+2. **Swap API** (`api.jup.ag/swap/v1/*`) — the surface actually relevant to a liquidation callback,
+   because unlike Ultra it exposes **raw instructions**: `POST /swap/v1/quote` returns a
+   `quoteResponse` (input/output mints, amounts, `routePlan`); `POST /swap/v1/swap-instructions`
+   takes that `quoteResponse` plus `userPublicKey` and returns the individual instructions (setup,
+   the swap instruction itself, cleanup, address-lookup-table addresses) needed to assemble a
+   transaction — this is what would let an example callback program construct a CPI into Jupiter's
+   router rather than only ever getting a full pre-signed transaction back.
+3. **On-chain program.** Jupiter's v6 aggregator/router program is deployed on mainnet at
+   `JUP6LkbZbjS1jKKwapdHNy74zcZ3tLUZoi5QNyVTaV4` (cross-confirmed on-chain via Solscan/Solana.fm,
+   2026-09-11); swaps are dispatched through `sharedAccountsRoute`-style instructions with the
+   actual liquidity traversed via inner instructions to the underlying DEXes/AMMs it routes through.
+4. **Network requirement.** Both the quote and swap-instructions steps are **HTTP calls to
+   Jupiter's hosted API** (`api.jup.ag`) — there is no offline/local mode and no bundled routing
+   engine shipped for local use. This is the specific fact that makes a real Jupiter route
+   structurally incompatible with `make test` / NFR-4 (zero-cost, offline): computing a route at
+   all requires reaching Jupiter's off-chain infrastructure over the network.
+5. **Mainnet-fork feasibility.** Surfpool (already this repository's validator/test-node choice,
+   `docs/ecosystem-research.md` §5) supports **just-in-time mainnet forking** — it fetches only the
+   accounts a transaction actually touches from a real RPC endpoint, on demand, rather than
+   replicating full mainnet state. This is exactly what makes an *optional*, network-tagged Jupiter
+   test feasible without deploying capital or running a full mainnet mirror: a Surfpool mainnet-fork
+   test can (a) call the real Jupiter HTTP API for a quote and swap instructions, then (b) execute
+   the resulting transaction against Surfpool's JIT-forked state, needing an RPC endpoint but no
+   paid service and no funded wallet beyond a JIT-airdropped SOL balance.
+
+**Primary sources:**
+- <https://developers.jup.ag/docs/api-reference/swap/v1/swap-instructions> /
+  <https://dev.jup.ag/docs/api/swap-api/swap-instructions> (Jupiter's own developer-docs domains;
+  content corroborated via direct search-result quotation on 2026-09-11 — the docs site is a
+  client-rendered SPA that returns HTTP 404 to a plain unauthenticated fetch of the rendered route,
+  so the exact endpoint path, parameters, and Ultra-vs-Swap distinction above are cited from the
+  same official domain's indexed content rather than a byte-for-byte page fetch; nothing below is
+  taken from a third-party mirror).
+- On-chain confirmation of the v6 program address via Solscan (`solscan.io/account/
+  JUP6LkbZbjS1jKKwapdHNy74zcZ3tLUZoi5QNyVTaV4`) and Solana.fm, both independent block explorers
+  reading the same mainnet account, 2026-09-11.
+
+**Date:** 2026-09-11.
+
+**Implications for Aegis:** confirms `docs/composability.md` §4's existing design is still correct
+and does not need to change: Jupiter is reachable **only** from inside the untrusted example
+callback / the optional network test, never from Aegis program logic, and never as a required
+dependency. The required, offline `I-LIQ-CB-01` path uses a deterministic local price instead of any
+Jupiter call. The optional `N-JUP-01` test uses the Swap API's `quote` → `swap-instructions` flow
+(not Ultra, since Ultra does not expose raw instructions for CPI composition) against a Surfpool
+mainnet fork, tagged `#[ignore]`/network and excluded from `make test`, exactly as
+`phase-08-composability.md` requires.

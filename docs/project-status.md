@@ -1,8 +1,8 @@
 # Aegis — Project Status
 
-**Last updated: 2026-09-11**
-**Current phase: Phase 7 — Token-2022 Completion — COMPLETE**
-**Next phase: Phase 8 — Composability — NOT STARTED**
+**Last updated: 2026-09-12**
+**Current phase: Phase 8 — Composability — COMPLETE**
+**Next phase: Phase 9 — SDK, client & UI — NOT STARTED**
 
 > This file is the first thing any contributor or model reads after `AGENTS.md`. It must always
 > reflect reality. **"Implemented" never means "verified."** The five states below are tracked
@@ -37,7 +37,7 @@ rounded up.
 | 5 | Oracle | ✅ **COMPLETE** | `phase-05-oracle` |
 | 6 | Health, liquidation & bad debt | ✅ **COMPLETE** | `phase-06-liquidation` |
 | 7 | Token-2022 Completion | ✅ **COMPLETE** | `phase-07-token2022` |
-| 8 | Composability | ⬜ NOT STARTED | — |
+| 8 | Composability | ✅ **COMPLETE** | `phase-08-composability` |
 | 9 | SDK, client & UI | ⬜ NOT STARTED | — |
 | 10 | Security campaign | ⬜ NOT STARTED | — |
 | 11 | Performance | ⬜ NOT STARTED | — |
@@ -469,7 +469,351 @@ adversarial self-audit (§19 below) confirmed no extension-specific carve-out ex
 `token/policy.rs` that could have silently broadened acceptance. Aegis's supported Token-2022
 surface at the end of Phase 7 is identical to its surface at the end of Phase 3.
 
+**Phase 8 is complete.** `liquidate` gained an **optional** callback
+(`callback_program`/`callback_collateral_account`/`callback_data`) so a liquidator can seize
+collateral, swap it via an untrusted external program, and repay — all in one transaction, with no
+pre-funding (`docs/composability.md`, `docs/phases/phase-08-composability.md`). One new `Market`
+field (`liquidation_guard: u8`, one byte moved out of `_reserved`, `Market::LEN` unchanged) backs a
+per-market reentrancy guard, checked unconditionally at the top of `liquidate` and set only around
+the callback CPI (ADR-0013). The callback CPI's account list is built explicitly by a standalone,
+unit-tested function (`build_callback_instruction`): six fixed accounts plus the liquidator's own
+`remaining_accounts` (rejected outright if any alias `market`/`liquidator`/`position`/
+`fee_position`/`collateral_vault`/either liquidator ATA), dispatched with plain `invoke` — never
+`invoke_signed` — so neither `market` nor `liquidator`'s `AccountInfo` ever reaches it
+(`INV-AUTH-07`). Omitting the callback runs the exact, unmodified Phase 6 code path
+(`I-LIQ-CB-02`); the callback branch is new code that seizes collateral into a caller-supplied
+account, invokes the callback, reloads `loan_vault`, and requires the measured delta to **meet or
+exceed** — not equal exactly — the required repayment (a deliberate, documented exception to
+INV-CUS-01's exact-equality form for this one branch, `docs/invariants.md` §B, ADR-0013 §1 point
+3: a real external swap essentially never lands on the exact wei amount required, and any surplus
+is ordinary unaccounted vault surplus, the same shape as INV-CUS-08's donation case). Two research
+gates were closed with primary sources before any callback code was written: **RV-6** (the current
+Agave runtime's own `InvokeContext::push()` rejects indirect `A → B → A` CPI reentrancy with
+`InstructionError::ReentrancyNotAllowed`, independent of and not relied upon by Aegis's own guard)
+and **RV-8** (Jupiter's current integration surface is the Swap API's `quote` → `swap-instructions`
+HTTP flow against the real mainnet program `JUP6LkbZbjS1jKKwapdHNy74zcZ3tLUZoi5QNyVTaV4`, reachable
+only from the optional, network-tagged tier) — both in `docs/ecosystem-research.md` §16. Two new
+`labs/` programs exist solely to prove the design: `example-liquidator` (a deterministic, honest
+callback, `I-LIQ-CB-01`) and `hostile-callback` (one program, four attack modes, `A-CPI-01..04`,
+each proven to fail **atomically** — zero state diff, not merely a returned error). A TypeScript
+keeper (`bots/liquidator/`, `@solana/kit` + `@anchor-lang/core`'s coder only, ADR-0011) scans,
+estimates health off-chain (advisory only), and drives both the direct and callback liquidation
+paths; its required local demo runs against a real, local, **non-forking** Surfpool validator with
+zero network. The optional `N-JUP-01` network test genuinely executes the real Jupiter Swap API
+call and validates its response shape; the further step of running the resulting instruction
+on-chain against a Surfpool mainnet fork was not attempted (documented as **NOT RUN**, not faked)
+— see §9 of the evidence below for exactly why. A pre-existing, uncommitted local artifact
+inconsistency (this checkout's `target/deploy/aegis-keypair.json` did not match `declare_id!`) was
+found and fixed during this phase because it blocks *any* real on-chain interaction with the
+deployed program, not merely the TS demo specifically — see §10.
+
 ---
+
+## Phase 8 — evidence
+
+### 0. Phase gate (verified before any code was written)
+
+```
+$ git log -1 --format="%H %s" phase-07-token2022
+c9b97eb857dfcad4ed44f257287f64fc413aa32b docs(phase-7): record Phase 7 completion evidence, RV-5 resolution, status, and README
+$ git log -1 --format="%H %s" HEAD
+c9b97eb857dfcad4ed44f257287f64fc413aa32b docs(phase-7): record Phase 7 completion evidence, RV-5 resolution, status, and README
+```
+Tag == HEAD. Working tree clean (`git status --short` empty). `cargo test --workspace --offline`:
+25 test-result blocks, 0 failed. `cargo fmt --all --check`: clean. `cargo clippy --workspace
+--all-targets -- -D warnings`: clean. `docs/project-status.md` matched reality exactly (phase
+table, tags). No `labs/`, no `bots/` existed yet.
+
+### 1. RV-6 and RV-8 — research gates closed before implementation
+
+Full write-up: `docs/ecosystem-research.md` §16. Summary:
+
+- **RV-6:** `anza-xyz/agave`, `program-runtime/src/invoke_context.rs`, `InvokeContext::push()` —
+  `if contains && !is_last { return Err(InstructionError::ReentrancyNotAllowed); }`. Indirect
+  `A → B → A` CPI reentrancy is rejected by the runtime itself. Direct self-recursion (`A → A`) is
+  allowed, bounded by `MAX_INSTRUCTION_STACK_DEPTH = 5` (4 CPI levels) on the currently shipping
+  runtime. Cross-checked against <https://solana.com/docs/core/cpi/cpi-execution> (fetched
+  2026-09-11). **Aegis's guard does not depend on this finding** (`docs/composability.md` §2) — it
+  informs `A-CPI-02`'s test design (two separate assertions: the CPI-level attempt, and a direct,
+  non-CPI unit test of the Aegis-level guard) and the documentation, not whether the defense
+  exists.
+- **RV-8:** Jupiter's Swap API (`api.jup.ag/swap/v1/quote` then `/swap-instructions`) is the
+  current integration surface exposing raw instructions (Ultra API does not); the v6 router is
+  deployed on mainnet at `JUP6LkbZbjS1jKKwapdHNy74zcZ3tLUZoi5QNyVTaV4` (confirmed on-chain via
+  Solscan/Solana.fm, 2026-09-11). Both steps are genuine HTTP calls to Jupiter's hosted API — no
+  offline mode exists, which is exactly why the required path uses a deterministic local rate
+  instead and the Jupiter path is optional/network-tagged.
+
+### 2. On-chain implementation
+
+`programs/aegis/src/instructions/liquidate/liquidate.rs`'s `handler` branches on
+`callback_program.is_some()` after a shared prefix (token-program pin checks, oracle validation,
+`accrue_mut`, HF check, `compute_liquidation_by_*`) identical to Phase 6. The no-callback branch is
+the exact Phase 6 code, unmoved in logic. `Market` gained `liquidation_guard: u8` (ADR-0013,
+`docs/account-model.md` §4); `Market::LEN` unchanged at 640. New error band 6160-6179
+(`architecture.md` §8): `LiquidationCallbackReentrancy`, `LiquidationCallbackNotExecutable`,
+`LiquidationCallbackAccountMismatch`, `CallbackAccountNotPermitted`,
+`LiquidationCallbackRepaymentShortfall`. `Liquidated` event gained `callback_program: Option<Pubkey>`.
+
+```
+$ cargo build -p aegis
+    Finished `dev` profile [unoptimized + debuginfo] target(s) in 3.82s
+```
+
+### 3. `labs/example-liquidator` and `labs/hostile-callback`
+
+Both new Anchor-program workspace members (`Cargo.toml` `members`), both registered in
+`Anchor.toml`'s `[programs.localnet]`. **Anchor CLI's own notion of "the workspace" only discovers
+programs under `programs/`** — verified directly (`anchor build -p example_liquidator` → "is not
+part of the workspace" despite being a normal Cargo workspace member) — so both are built with
+`cargo build-sbf --manifest-path labs/<name>/Cargo.toml` directly (documented in the `Makefile`'s
+`build` target), the same underlying command `anchor build` itself shells out to.
+
+```
+$ cargo build-sbf --manifest-path labs/example-liquidator/Cargo.toml
+    Finished `release` profile [optimized] target(s) in 1m 24s
+$ cargo build-sbf --manifest-path labs/hostile-callback/Cargo.toml
+    Finished `release` profile [optimized] target(s) in 0.65s
+```
+
+### 4. Regression — full offline suite
+
+```
+$ cargo fmt --all --check
+(exit 0, no output)
+
+$ cargo clippy --workspace --all-targets -- -D warnings
+    Finished `dev` profile [unoptimized + debuginfo] target(s) in 8.00s
+(zero warnings)
+
+$ cargo test --workspace --offline
+test result: ok. 32 passed; 0 failed; 0 ignored ... (aegis unittests, 32)
+test result: ok. 55 passed; 0 failed ... (aegis-math unittests, 55)
+test result: ok. 1 passed ... (inflation_attack)
+test result: ok. 4 passed ... (liquidation_property)
+test result: ok. 3 passed ... (property)
+test result: ok. 6 passed ... (rounding_law)
+test result: ok. 4 passed ... (shares_property)
+test result: ok. 3 passed ... (aegis-test-kit unittests)
+test result: ok. 8 passed ... (phase2_adversarial)
+test result: ok. 5 passed ... (phase2_state)
+test result: ok. 9 passed ... (phase2_token_policy)
+test result: ok. 10 passed ... (phase3_adversarial)
+test result: ok. 5 passed ... (phase3_collateral)
+test result: ok. 8 passed ... (phase4_adversarial)
+test result: ok. 9 passed ... (phase4_lending)
+test result: ok. 21 passed ... (phase5_oracle_adversarial)
+test result: ok. 5 passed ... (phase6_admin)
+test result: ok. 13 passed ... (phase6_bad_debt)
+test result: ok. 1 passed ... (phase6_integration)
+test result: ok. 17 passed ... (phase6_liquidation)
+test result: ok. 6 passed ... (phase7_token2022)
+test result: ok. 5 passed ... (phase8_composability)      <-- NEW
+test result: ok. 5 passed ... (phase8_hostile_callback)    <-- NEW
+test result: ok. 1 passed ... (smoke)
+test result: ok. 0 passed; 0 failed; 1 ignored ... (network -- N-JUP-01, correctly excluded)
++ 6 doc-test blocks (0 tests each, one per crate)
+= 32 test-result blocks total, 0 failed.
+```
+
+Every existing Phase 1-7 test file passes **unchanged** — the strongest available evidence that
+`I-LIQ-CB-02` holds and that no-callback behavior was not disturbed, beyond the dedicated test.
+
+```
+$ for s in scripts/check-*.sh; do ./"$s"; done
+check-collateral-transfer-paths: OK — vault token movement goes through exactly the shared helpers, from exactly their enumerated call sites
+check-cpi-allowlist: OK — the only raw CPI target outside the token/system programs is the one opt-in, unsigned liquidation callback dispatch     <-- NEW
+check-no-close: OK
+check-no-dup: OK
+check-no-float: OK
+check-no-init-if-needed: OK
+check-no-slot-time: OK
+check-overflow-checks: OK
+```
+The new `check-cpi-allowlist.sh` was proven to fire on a real violation (a temporary
+`invoke_signed(` fixture line appended to `lib.rs`, reverted immediately after, `git diff` showing
+only the intended Phase 8 changes afterward) — the same proof-of-life pattern the five pre-existing
+guards already use.
+
+### 5. `A-CPI-01..04` — hostile callback, atomic-rollback proof
+
+`tests/phase8_hostile_callback.rs`, 5 tests (4 attacks + 1 direct guard unit test), all passing.
+Each attack test snapshots `Market` (accounting totals, `liquidation_guard`), `Position`, and both
+vault balances **before and after** the failed transaction and asserts byte-for-byte equality —
+not merely that the transaction returned an error:
+
+- **`A-CPI-01`** (`DrainVault`): the hostile callback's only account is `collateral_account` (the
+  one thing it actually received) — neither a signer nor `loan_vault`'s real owner (the Market
+  PDA). The real SPL Token program rejects the transfer. Zero state diff.
+- **`A-CPI-02`** (`Reenter` + direct guard test): the CPI-level attempt fails (in this harness, on
+  a missing-account/dispatch error, since the callback has no real signer or complete account set
+  to offer — documented honestly rather than misattributed to the runtime's separate
+  `ReentrancyNotAllowed` check, which a call that never gets that far cannot exercise). The
+  **direct** test — `set_liquidation_guard(svm, market, 1)` then an ordinary `liquidate` call, no
+  CPI at all — asserts `AegisError::LiquidationCallbackReentrancy` precisely, proving the
+  protocol-level guard independent of runtime behavior.
+- **`A-CPI-03`** (`BurnCompute`): a real, loop-carried-dependency compute-burning loop
+  (5,000,000 iterations) against a bounded 400,000 CU outer limit. Fails with a genuine compute
+  exhaustion; zero partial state.
+- **`A-CPI-04`** (`NoRepayment`): the callback instruction itself returns `Ok(())`; the outer
+  `liquidate` transaction still fails, on the measured `loan_vault` delta (`0 < 900_000_000`), with
+  `AegisError::LiquidationCallbackRepaymentShortfall`. The callback's successful return is never
+  consulted.
+
+### 6. `I-LIQ-CB-01` and `I-LIQ-CB-02`
+
+`tests/phase8_composability.rs`, 5 tests, all passing:
+
+- `i_liq_cb_01_honest_callback_seizes_swaps_locally_and_repays_in_one_transaction`: the exact
+  `tests/phase6_liquidation.rs` worked-example scenario (10 SOL collateral, 900 USDC debt, crash to
+  $95.00/$1.0000), a liquidator with **zero** loan-asset balance, `example-liquidator` as the
+  callback at a deterministic $100/SOL local rate. Succeeds; position/market figures match the
+  no-callback worked example exactly (`10_000_000_000 - 9_970_348_101` remaining collateral,
+  `47_477_848` protocol cut); `INV-CUS-02` holds exactly; the security-relevant direction of
+  `INV-CUS-01` (vault never short) holds; the liquidator's loan ATA never moves.
+- `i_liq_cb_02_omitting_the_callback_matches_the_no_callback_worked_example_exactly`: the identical
+  scenario, `aegis_test_kit::liquidate` (callback accounts `None`), asserted against the same exact
+  figures as `tests/phase6_liquidation.rs::u_liq_01_worked_example_on_chain`.
+- `a_auth_07_callback_instruction_never_carries_market_or_liquidator_or_any_signer`: calls
+  `build_callback_instruction` directly (no SVM) with fabricated `AccountInfo`s, asserts the
+  returned `Vec<AccountMeta>` contains neither `market` nor `liquidator` (nor `position`,
+  `fee_position`, `collateral_vault`, either liquidator ATA), and that **every** meta has
+  `is_signer == false` — including the one honest passthrough account.
+- `callback_account_not_permitted_rejects_a_smuggled_protected_key`: a `remaining_account` equal to
+  `market`'s pubkey is rejected with `CallbackAccountNotPermitted` before any CPI is attempted.
+- `callback_on_one_market_never_touches_an_unrelated_market`: a callback liquidation on Market A
+  leaves every checked field of Market B (including its own `liquidation_guard`) unchanged.
+
+### 7. Demo transcripts (both genuinely executed, not reconstructed)
+
+**Rust, `cargo run -p aegis-test-kit --example phase8_demo`** (offline, in-process LiteSVM):
+
+```
+Aegis Phase 8 demo -- composability and liquidation routing
+=== 4. A liquidator with ZERO loan-asset balance uses the callback ===
+  liquidator's loan-asset balance: 0.000000 USDC (cannot cover the $900 repayment without the callback)
+  -> liquidate(repay_assets=900 USDC, callback=example_liquidator)
+  <- Ok: seized collateral -> callback -> deterministic local swap -> loan_vault
+  [after callback liquidation]
+    position: collateral=0.029651899 SOL borrow_shares=0
+    market:   total_borrow_assets=0.000000 USDC ... collateral_fee_accrued=0.047477848 SOL liquidation_guard=0
+  INV-CUS-02 (collateral custody) holds exactly.
+=== 5. A second unhealthy borrower (Borrower B) -- ordinary, no-callback liquidation ===
+  -> liquidate(repay_assets=900 USDC, callback=None)  [I-LIQ-CB-02]
+  <- Ok: identical Phase 6 code path, byte-for-byte (I-LIQ-CB-02)
+  [after no-callback liquidation]
+    position: collateral=0.029651899 SOL borrow_shares=0
+Phase 8 demo complete.
+```
+(Full transcript: every section 1-5 ran and printed exactly the figures the two Rust test files
+also assert.)
+
+**TypeScript keeper, `npm run demo` (`bots/liquidator/`)**, against a real, local,
+**non-forking** Surfpool validator (`surfpool start --offline`) — zero network, zero devnet, zero
+Jupiter, zero paid API:
+
+```
+=== Aegis Phase 8 liquidator keeper -- local demo ===
+(no network, no fork -- surfpool --offline)
+[1] Starting a plain local Surfpool validator (offline)...
+    Surfpool is healthy.
+[2] Deploying aegis.so and example_liquidator.so...
+    Program Id: DbRhjkZV1QSxMj5AvrYdgVsyEz8nKhoCLnSLGSKsqaF9
+    Program Id: CyexeWx6KSzkD4HtCges24DYWMt8ny4wnsjvE39iao1v
+[3] Creating collateral (9dp) and loan (6dp) mints...
+[4] Protocol + market setup...
+[5] Lender supplies liquidity...
+    lender supplied 1,000,000.000000 USDC
+[6] Borrower deposits collateral and borrows at $150.00/SOL...
+    borrower deposited 10.000000000 SOL, borrowed 900.000000 USDC
+[7] SOL crashes to $95.00 -- the position is now liquidatable.
+[8] A liquidator with ZERO loan-asset balance runs the keeper...
+    liquidator loan-asset balance: 0 (relies entirely on the callback)
+    example-liquidator reserve pre-funded: 2,000.000000 USDC
+
+=== Keeper result ===
+  LIQUIDATED position 3LLsqSjRsjNmzKcZD92TRWTe9HrNJDKhjiV2X3CKipp2 via callback=true, repay=900000000
+  signature: ChyZ7t4fD2fp5JSRttMRXTGLZxxHP9aWgJ2h7jcfckSAgPEQxUYRtvPuJ3zgFndhu8wr3aZtbM9UkeYxxZUaBC7
+
+Demo complete: the keeper found and executed a callback liquidation for a
+liquidator holding zero loan-asset balance, entirely against a local, offline
+Surfpool validator.
+```
+Exit code 0. `npx tsc --noEmit -p tsconfig.json` (strict mode): exit 0, zero errors.
+
+### 8. `N-JUP-01` — optional, network-tagged (real API call, on-chain leg NOT RUN)
+
+```
+$ cargo test --test network -- --ignored --nocapture
+running 1 test
+N-JUP-01: live Jupiter Swap API integration surface confirmed -- quote outAmount=102881210,
+swap instruction targets program JUP6LkbZbjS1jKKwapdHNy74zcZ3tLUZoi5QNyVTaV4 with 45 accounts.
+On-chain execution against a Surfpool mainnet fork was NOT attempted in this pass -- documented
+as NOT RUN, not faked as passing.
+test jupiter_route::n_jup_01_real_jupiter_quote_and_swap_instructions_have_the_documented_shape ... ok
+```
+This genuinely called the real `api.jup.ag` (network access was available in this environment),
+and genuinely confirmed the RV-8 finding — same program ID, real route data. **The further step of
+constructing a callback that relays that instruction and executing it against a Surfpool mainnet
+fork with a real Aegis market was NOT attempted**: it needs a dedicated Jupiter-relay callback
+program (a live quote's route can target any of several different underlying AMM programs, each
+with its own account layout — routing it correctly through the fixed callback account contract is
+its own scoped piece of work) and mainnet-mint-denominated fixture state, which is genuinely
+optional, out-of-scope engineering for this pass, not a blocker for anything required. `cargo test
+--workspace` confirms this test is `ignored` by default (excluded from `make test`).
+
+### 9. Pre-existing local artifact fix (found and fixed during this phase)
+
+This local checkout's `target/deploy/aegis-keypair.json` did not match `declare_id!`'s
+`2GtoBADM175vkjf5UYpbD198Ry1cJadXMGo8sCQvXndh` (an uncommitted, gitignored local build artifact
+whose prior history is unknown). This was discovered attempting the TS keeper's real local
+deployment: `anchor build`/`cargo build-sbf` warn about the mismatch but still build; **the first
+real instruction sent to the deployed program failed with `AnchorError: DeclaredProgramIdMismatch`
+(Error Number: 4100)** — Anchor's `#[program]` dispatcher checks the actual invocation address
+against the compiled-in `crate::ID` on every call. This is not cosmetic; it blocks any real
+on-chain interaction with the program, on any cluster, until fixed. `anchor keys sync` corrected
+`declare_id!` (`programs/aegis/src/lib.rs`) and `Anchor.toml` to match the existing local keypair,
+**`DbRhjkZV1QSxMj5AvrYdgVsyEz8nKhoCLnSLGSKsqaF9`**, and the program was rebuilt
+(`--arch v0` — see below). The full regression suite (§4) was re-run after this change and confirms
+no other behavior depends on the literal old ID; the three other Phase 8 files that referenced it
+(`labs/hostile-callback/src/lib.rs`'s `aegis_program_id()`, `bots/liquidator/src/config.ts`'s
+default, `bots/liquidator/src/demo.ts`'s explanatory comment) were updated accordingly. Historical
+evidence elsewhere in this document (Phase 4/5/6's own "Deployed program 2GtoBADM..." log excerpts)
+is **left unchanged** — those are accurate records of what those phases actually ran at the time,
+not a claim about the program's current address.
+
+Separately, `anchor build`'s default SBPF target (`--arch v3`) produced a `.so` this local
+Surfpool/`solana-cli` combination's deploy path rejects outright (`ELF error: Detected sbpf_version
+required by the executable which are not enabled`) — unrelated to the ID mismatch, discovered in
+the same debugging session. All three programs are rebuilt with `--arch v0` (`cargo build-sbf`'s
+own natural default) for this local environment; `cargo test --workspace` (LiteSVM) passed
+identically both before and after this arch change, confirming it has no bearing on the offline
+test suite.
+
+### 10. Self-audit (spec item #34 / AGENTS.md-style adversarial review)
+
+| Question | Answer |
+|---|---|
+| Can the callback receive the Market PDA's signer? | No — never included in the callback CPI's account list at all; `invoke`, never `invoke_signed`, is used for the dispatch. Proven directly (`A-AUTH-07`), not merely by source inspection. |
+| Can the callback receive the liquidator's signer? | No — same account list, same proof. |
+| Can a `remaining_account` accidentally carry signer privilege? | Every meta this file constructs is unconditionally `is_signer: false`; additionally, six protected keys are rejected outright if present at all (`CallbackAccountNotPermitted`). |
+| Can the callback move vault funds? | No (`A-CPI-01`) — it has no authority (owner/delegate) over either vault. |
+| Can the callback reenter the same market? | No, on two independent grounds: the Aegis-level guard (proven directly) and the runtime's own indirect-reentrancy rejection (RV-6). |
+| Can pre-CPI cached state be trusted accidentally? | `loan_vault` is explicitly reloaded after the callback and only the post-reload balance is used; `market`/`position` in-memory state was already fully computed from oracle-validated data before the CPI and is never re-read from anywhere the callback could have touched (the callback never receives `market` or `position` at all). |
+| Is every relevant mutable account reloaded? | `loan_vault` — yes, explicitly. `collateral_vault`, `market`, `position` are never given to the callback, so nothing else could have been mutated by it. |
+| Can the callback lie via return data? | Its return value and `callback_data` are never consulted for the repayment decision — only the measured `loan_vault` delta (`A-CPI-04`). |
+| Can the callback repay less than required? | Rejected: `actual_delta >= outcome.repay_assets` is enforced; anything less fails atomically. |
+| Can the callback manipulate Position/Market then satisfy only the vault delta? | It never receives `Position` or `Market` at all — there is no account through which it could touch them. |
+| Are full post-conditions rechecked? | Yes: the guard, the reload, the delta check, and — via the shared code path — the same `hf_after`/accounting math both branches use. |
+| Can compute exhaustion partially commit state? | No (`A-CPI-03`) — Solana's own transaction atomicity, not special-cased rollback logic. |
+| Can callback failure leave the guard stuck? | No — any failure reverts the whole transaction, including the guard write; the guard is only ever observed as `1` from *within* the same, still-executing transaction. |
+| Can global locking break parallelism? | No global lock exists; the guard is a `Market`-scoped field, and `callback_on_one_market_never_touches_an_unrelated_market` proves cross-market isolation directly. |
+| Can the callback bypass oracle/liquidation economics? | No — `outcome` is fully computed from oracle-validated, already-accrued state *before* the callback branch even starts; the callback cannot influence it. |
+| Can Token-2022 semantics break repayment measurement? | The delta is measured via `InterfaceAccount::reload()` on the real vault, the same measured-delta discipline Phases 2/3/7 already established for exactly this reason; no callback-specific fee assumption exists anywhere in `liquidate.rs`. |
+| Does the no-callback path still exactly preserve Phase 6? | Yes — unmoved code, plus a passing, unmodified `tests/phase6_liquidation.rs` and the dedicated `I-LIQ-CB-02` test. |
+| Did a general flash-loan facility accidentally appear? | No — the callback is reachable only from inside `liquidate`, only after collateral seizure, only with the fixed six-account contract; there is no borrow-and-return primitive anywhere else. |
+| Did Jupiter become required? | No — `N-JUP-01` is `#[ignore]`d and excluded from `make test`; nothing in `programs/aegis/src` references Jupiter at all (`check-cpi-allowlist.sh` greps for this explicitly). |
+| Does the keeper trust stale off-chain calculations as authoritative? | No — `src/health.ts` is explicitly documented as advisory-only, and every liquidation attempt is a real transaction subject to on-chain re-validation; a rejection is logged and treated as a normal outcome. |
 
 ## Phase 7 — evidence
 
@@ -3015,5 +3359,5 @@ change to the design.
 
 ## Next action
 
-**Phase 7 is complete. Hand Phase 8 (composability) to the implementation model when the
-maintainer explicitly authorizes it. Phase 8 has NOT been started.**
+**Phase 8 is complete. Hand Phase 9 (SDK, client & UI) to the implementation model when the
+maintainer explicitly authorizes it. Phase 9 has NOT been started.**

@@ -2,23 +2,23 @@
 
 **A risk-first, isolated-market, overcollateralized lending protocol on Solana.**
 
-> **STATUS: PHASE 7 — TOKEN-2022 COMPLETION.**
-> Aegis is under construction. Phase 6 added `liquidate`, `absorb_bad_debt` and
-> `withdraw_collateral_fees` — close-factor/dust-rule liquidation, the collateral clamp, and
-> bad-debt socialization with protocol first-loss, exactly per `economic-model.md` §7-8. Phase 7
-> closes **RV-5**, the research gate asking for the complete current Token-2022 extension list:
-> the resolved `spl-token-2022-interface` version (2.1.0) is enumerated and classified extension
-> by extension in [`docs/token-compatibility.md`](docs/token-compatibility.md) §0, including
-> `Pausable` and `ScaledUiAmount` — extensions added after older, commonly-remembered lists. The
-> positive-allowlist policy engine, `ImmutableOwner` vault sizing, and measured-delta accounting
-> were already complete from Phases 2/3; Phase 7's new work is the full protocol lifecycle
-> (supply → deposit → borrow → accrue → liquidate → bad debt → fee withdrawal) proven correct on a
-> real transfer-fee Token-2022 collateral market (`A-TOK-10`), a fee rate raised mid-lifecycle via
-> the real `SetTransferFee` instruction and Token-2022's genuine 2-epoch activation delay,
-> without breaking accounting because Aegis never caches a fee rate anywhere (`A-TOK-11`), and a
-> concrete proof that `ImmutableOwner` blocks vault-authority reassignment even by the account's
-> genuine owner. Aegis's supported Token-2022 surface did not broaden: zero lines changed in
-> `programs/aegis/src` this phase. See [`docs/project-status.md`](docs/project-status.md) for the
+> **STATUS: PHASE 8 — COMPOSABILITY AND LIQUIDATION ROUTING.**
+> Aegis is under construction. Phase 8 adds an **optional** callback to `liquidate`: after seizing
+> collateral, Aegis can CPI into a liquidator-specified, **untrusted** program so it can swap the
+> collateral and fund the repayment in the same transaction — removing the capital pre-funding a
+> liquidator otherwise needs, without weakening Phase 6's liquidation guarantees
+> ([`docs/composability.md`](docs/composability.md), [ADR-0013](docs/adr/0013-liquidation-callback-security-design.md)).
+> The callback is trusted for nothing: no signer is ever forwarded to it (`INV-AUTH-07`), every
+> post-condition is re-verified against freshly re-read state after it returns, and a per-market
+> reentrancy guard rejects a nested `liquidate` independent of the current Solana runtime's own
+> CPI-reentrancy behavior (RV-6, closed with a primary source in
+> [`docs/ecosystem-research.md`](docs/ecosystem-research.md) §16.1). Four hostile callbacks
+> (`A-CPI-01..04` — draining vault funds, reentering, exhausting compute, returning success without
+> repaying) all fail, each proven to fail **atomically** with zero partial state. Omitting the
+> callback reproduces Phase 6 behavior byte-for-byte (`I-LIQ-CB-02`). A minimal, deterministic
+> example callback (`labs/example-liquidator/`) and a TypeScript liquidator keeper
+> (`bots/liquidator/`, `@solana/kit` + `@anchor-lang/core`) both demonstrate the composed path
+> end to end, fully offline. See [`docs/project-status.md`](docs/project-status.md) for the
 > authoritative state of every component.
 
 ---
@@ -82,7 +82,7 @@ Read in this order:
 | [`docs/ecosystem-research.md`](docs/ecosystem-research.md) | Dated toolchain research and open verification gates |
 | [`docs/phase-roadmap.md`](docs/phase-roadmap.md) | The 13 implementation phases |
 | [`docs/project-status.md`](docs/project-status.md) | **Current state of everything** |
-| [`docs/adr/`](docs/adr/) | 12 architecture decision records |
+| [`docs/adr/`](docs/adr/) | 13 architecture decision records |
 
 Contributor rules: [`AGENTS.md`](AGENTS.md) (engineering constitution) and [`CLAUDE.md`](CLAUDE.md)
 (Claude session workflow).
@@ -96,32 +96,30 @@ Native Solana Rust and Pinocchio appear in scoped, benchmarked labs — not in p
 
 ## Quickstart
 
-**Right now (Phase 7):** on top of everything Phase 2-6 shipped, RV-5 is closed — the complete
-current Token-2022 extension list (27 real `ExtensionType` variants in the resolved
-`spl-token-2022-interface` 2.1.0) is enumerated and classified in
-[`docs/token-compatibility.md`](docs/token-compatibility.md) §0, with `Pausable` and
-`ScaledUiAmount` (extensions shipped after older, commonly-remembered lists) both verified rather
-than assumed. The full protocol lifecycle — supply, deposit, borrow, accrual, liquidation, bad
-debt, protocol first-loss, fee withdrawal — is proven correct on a real transfer-fee Token-2022
-collateral market with `INV-CUS-01`/`INV-CUS-02` asserted after every instruction (`A-TOK-10`), and
-a fee rate raised mid-lifecycle via the real `SetTransferFee` instruction (respecting Token-2022's
-genuine 2-epoch activation delay) does not break accounting, because Aegis never caches a fee rate
-anywhere (`A-TOK-11`). `ImmutableOwner` is proven to actually block vault-authority reassignment,
-not merely to be present. No line in `programs/aegis/src` changed this phase — the positive-
-allowlist policy engine, vault sizing, and measured-delta accounting were already complete from
-Phases 2/3. There is still no SDK/app yet.
+**Right now (Phase 8):** on top of everything Phase 2-7 shipped, `liquidate` gained an optional
+callback (`callback_program`/`callback_collateral_account`/`callback_data`) so a liquidator can
+seize collateral, swap it via an untrusted external program, and repay — all in one transaction,
+with zero pre-funding. The callback is trusted for nothing: no signer reaches it, all state is
+re-read and every post-condition re-verified after it returns, and a per-market
+`liquidation_guard` blocks reentrancy independent of runtime behavior. Omitting the callback
+reproduces Phase 6 byte-for-byte (`I-LIQ-CB-02`); a deterministic local example callback proves the
+composed path end to end (`I-LIQ-CB-01`); four hostile callbacks all fail atomically
+(`A-CPI-01..04`). A TypeScript keeper (`bots/liquidator/`) scans, estimates health off-chain
+(advisory only — on-chain Aegis remains authoritative), and executes both the direct and callback
+liquidation paths against a local, offline validator. There is still no SDK/app yet.
 
 ```bash
 make setup   # verify the pinned toolchain (Solana CLI, Anchor, Surfpool, Node) is installed
-make build   # anchor build — compiles `programs/aegis` and generates its IDL
+make build   # anchor build (aegis) + cargo build-sbf (the two Phase 8 labs/ programs)
 make test    # cargo test --workspace — offline, no network, no secrets (the load-bearing command)
-make demo    # SOL crashes to $95.00: a position is liquidated for the exact economic-model.md
-             # §7.5 figures (seizure, bonus, protocol cut). A second position is crashed to
-             # $40.00, its collateral fully seized by the clamp with debt remaining; the resulting
-             # bad debt is absorbed with real protocol fee shares burned FIRST, the residual is
-             # socialized, and a lender withdrawal realizes the loss directly — offline against an
-             # in-process LiteSVM, byte-exact PriceUpdateV2 fixtures, no Hermes
-             # (see docs/phases/phase-06-liquidation.md "Demo")
+make demo    # an under-funded liquidator (zero loan-asset balance) liquidates via the
+             # example-liquidator callback -- seize, deterministic local swap, repay, one
+             # transaction -- then, side by side, an ordinary pre-funded liquidator liquidates a
+             # second position with no callback at all, proving I-LIQ-CB-02. Offline, in-process
+             # LiteSVM (see docs/phases/phase-08-composability.md "Demo"). Earlier phase demos
+             # remain runnable directly, e.g. `cargo run -p aegis-test-kit --example phase7_demo`.
+             # The companion TypeScript keeper demo (bots/liquidator/, `npm run demo`) runs
+             # separately against a local, non-forking Surfpool validator.
 ```
 
 `make fuzz`, `make bench`, and `make app` exist as stubs that name the phase that implements them

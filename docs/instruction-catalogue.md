@@ -312,11 +312,11 @@ Exactly one of `assets`/`shares` is non-zero (E-22, E-23).
 
 ---
 
-## 17. `liquidate(repay_assets: u64, seize_collateral: u64)`
+## 17. `liquidate(repay_assets: u64, seize_collateral: u64, callback_data: Vec<u8>)`
 
-The most dangerous instruction in the protocol. Exactly one of the two inputs is non-zero; the other
-is derived. (Supporting a `seize_collateral`-specified form lets a liquidator size the trade against
-available swap liquidity, which matters for Phase 8.)
+The most dangerous instruction in the protocol. Exactly one of `repay_assets`/`seize_collateral` is
+non-zero; the other is derived. (Supporting a `seize_collateral`-specified form lets a liquidator size
+the trade against available swap liquidity, which matters for Phase 8.)
 
 - **Caller/signer:** `[S][W] liquidator`
 - **Accounts:**
@@ -324,19 +324,52 @@ available swap liquidity, which matters for Phase 8.)
   `[W] loan_vault` · `[W] collateral_vault` · `[W] liquidator_loan_ata` ·
   `[W] liquidator_collateral_ata` · `[R] loan_mint` · `[R] collateral_mint` ·
   `[R] loan_token_program` · `[R] collateral_token_program` ·
-  `[R] collateral_price_update` · `[R] loan_price_update`
-  *(14 accounts + program — comfortably within a v0 transaction; see the performance strategy.)*
-- **Preconditions:** not paused (`LIQUIDATE`); oracle valid for **both** assets (fail closed);
-  after `accrue_mut`, `HF < WAD` (**strict** — `HF == WAD` is not liquidatable, E-12);
-  `repay_assets ≤ max_repay` per the close-factor and dust rules (economic-model §7.1).
-- **State transition:** exactly economic-model §7.3.
-- **Tokens:** two transfers — liquidator → `loan_vault` (repayment, measured delta), and
-  `collateral_vault` → liquidator (`to_liquidator`), signed by the market PDA. `protocol_cut` stays
-  in the vault and is recorded in `collateral_fee_accrued`.
-- **Events:** `Liquidated { position, repay_assets, repay_shares, seized, to_liquidator, protocol_cut, hf_before, hf_after }`
-- **Invariants:** INV-LIQ-01..08, INV-CUS-01, INV-CUS-02, INV-SOLV-02
+  `[R] collateral_price_update` · `[R] loan_price_update` ·
+  `[R] callback_program?` · `[W] callback_collateral_account?`
+  *(14 fixed accounts + program, plus the two Phase 8 optional accounts, plus any liquidator-supplied
+  `remaining_accounts` for the callback's own use — comfortably within a v0 transaction for the
+  no-callback path; see the performance strategy.)*
+- **Preconditions:** `market.liquidation_guard == 0` (Phase 8, ADR-0013, `A-CPI-02`); not paused
+  (`LIQUIDATE`); oracle valid for **both** assets (fail closed); after `accrue_mut`, `HF < WAD`
+  (**strict** — `HF == WAD` is not liquidatable, E-12); `repay_assets ≤ max_repay` per the
+  close-factor and dust rules (economic-model §7.1); `callback_program` and
+  `callback_collateral_account` must be both `Some` or both `None`; if `Some`, `callback_program`
+  must be executable and `callback_collateral_account.mint == market.collateral_mint`.
+- **State transition:** exactly economic-model §7.3, in both branches.
+- **Tokens (no callback, `I-LIQ-CB-02`, unchanged from Phase 6):** two transfers — liquidator →
+  `loan_vault` (repayment, measured delta), and `collateral_vault` → liquidator (`to_liquidator`),
+  signed by the market PDA. `protocol_cut` stays in the vault and is recorded in
+  `collateral_fee_accrued`.
+- **Tokens (callback, Phase 8, ADR-0013 §1.5):** `collateral_vault` →
+  `callback_collateral_account` (`to_liquidator`, signed by the market PDA) **before** the callback
+  CPI; Aegis then CPIs into `callback_program` with the least-privilege account list below; on
+  return, `loan_vault` is reloaded and the measured delta must be `≥ repay_assets` (never trusted
+  from the callback's return value or instruction data — surplus is ordinary, unaccounted vault
+  surplus, `docs/invariants.md` §B's Phase 8 exception to INV-CUS-01's exact-equality form).
+- **The callback account contract (ADR-0013 §1.4)** — exactly what `callback_program` receives, and
+  no more: `[W] callback_collateral_account` (already funded with the seized collateral) ·
+  `[W] loan_vault` (the callback must deposit the repayment here, using its own authority) ·
+  `[R] collateral_mint` · `[R] loan_mint` · `[R] collateral_token_program` ·
+  `[R] loan_token_program` · then the liquidator's own `remaining_accounts`, forwarded verbatim
+  (e.g. a DEX route, or the callback's own PDA/reserve accounts) after Aegis rejects any that alias
+  `market`/`liquidator`/`position`/`fee_position`/`collateral_vault`/either liquidator ATA
+  (`CallbackAccountNotPermitted`). **Never** included: `market`'s or `liquidator`'s signature
+  (`invoke`, never `invoke_signed`, and neither `AccountInfo` is ever placed in the callback's
+  account list — INV-AUTH-07). `callback_data` is forwarded verbatim as the callback's own CPI
+  instruction data; Aegis defines no schema for it. What Aegis does **not** trust the callback for:
+  behaving honestly, returning expected data, leaving any account unchanged, repaying, not
+  reentering, bounded compute use, not touching any writable account it received, or being a swap
+  program at all — every guarantee comes from re-reading state and re-verifying post-conditions
+  after the callback returns, never from the callback's cooperation.
+- **Events:** `Liquidated { market, position, liquidator, repay_assets, repay_shares, base_seize,
+  total_seize, bonus_amount, protocol_cut, to_liquidator, clamped, hf_before, hf_after,
+  callback_program: Option<Pubkey> }` — `callback_program` is `None` for the no-callback path.
+- **Invariants:** INV-LIQ-01..08, INV-CUS-01 (exact for no-callback; `≥` for the callback branch,
+  see above), INV-CUS-02, INV-SOLV-02, INV-AUTH-07, INV-RES-07 (Phase 8).
 - **Failure cases:** healthy position; oracle invalid; repay exceeds close factor; leaves dust debt;
-  zero amounts; seizure exceeds collateral without the clamp path.
+  zero amounts; seizure exceeds collateral without the clamp path; (Phase 8) a callback already in
+  flight on this market; callback/callback-account presence mismatch; callback not executable; a
+  `remaining_account` aliasing a protected key; measured post-callback delta below `repay_assets`.
 - **Attack vectors:**
   - *Liquidating a healthy position via a stale/manipulated price* → strict oracle validity, fail
     closed, confidence-adjusted conservative prices, and `max_conf_bps` rejection during volatility.
@@ -351,6 +384,18 @@ available swap liquidity, which matters for Phase 8.)
   - *Wrong collateral ATA* → `transfer_checked` with the pinned mint; the liquidator's ATA owner is
     not constrained (a liquidator may direct proceeds anywhere), which is intentional and safe since
     the amount is fully determined by protocol state.
+  - *(Phase 8) `A-CPI-01`: hostile callback attempts to move vault funds* → it is never given
+    `market`'s signer and holds no delegate over either vault; the real SPL Token/Token-2022
+    program rejects the attempt.
+  - *(Phase 8) `A-CPI-02`: hostile callback attempts to reenter `liquidate`* → the Aegis-level guard
+    (`market.liquidation_guard`) rejects it independent of runtime behavior; the current Solana
+    runtime additionally rejects indirect CPI reentrancy on its own (RV-6,
+    `docs/ecosystem-research.md` §16.1), but Aegis does not depend on that.
+  - *(Phase 8) `A-CPI-03`: hostile callback exhausts the compute budget* → the transaction fails and
+    Solana's own atomicity guarantees no partial state; no special-case rollback logic exists or is
+    needed.
+  - *(Phase 8) `A-CPI-04`: hostile callback returns `Ok(())` without repaying* → rejected on the
+    measured `loan_vault` delta; the callback's return value is never consulted.
 
 ## 18. `absorb_bad_debt()`
 

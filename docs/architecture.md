@@ -80,6 +80,15 @@ crates/aegis-test-kit/    // TEST ONLY — never a dependency of the program
   pyth_fixture.rs         // byte-exact Pyth price-update account construction
   invariants.rs           // the 9 [GLOBAL] invariant checks, callable after any instruction
   scenarios.rs            // reusable multi-step scenarios
+
+labs/                     // Phase 8: educational/adversarial programs, never production
+  example-liquidator/     // the honest liquidation callback (I-LIQ-CB-01) -- deterministic
+                           // local exchange rate, not a real DEX (docs/composability.md §5)
+  hostile-callback/       // the adversarial callback exercising A-CPI-01..04
+
+bots/liquidator/          // Phase 8: TypeScript keeper (@solana/kit + @anchor-lang/core,
+                           // ADR-0011) -- scans, computes health off-chain (advisory only),
+                           // builds and submits direct or callback liquidations
 ```
 
 ### Why `aegis-math` is a separate crate
@@ -248,6 +257,7 @@ codes are stable and greppable:
 | 6100–6119 | Token / extension policy |
 | 6120–6139 | Configuration / bounds |
 | 6140–6159 | Lifecycle / state |
+| 6160–6179 | Composability / callback (Phase 8, ADR-0013) |
 
 Errors must be specific. `InvalidAccount` is banned; `VaultMintMismatch`, `OraclePriceTooStale`,
 `LiquidationBonusExceedsThresholdBound` are the standard. Specific errors are how an adversarial test

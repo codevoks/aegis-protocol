@@ -149,9 +149,13 @@ pub struct Market {
     pub bump: u8,                       // 1
     pub collateral_vault_bump: u8,      // 1
     pub loan_vault_bump: u8,            // 1
-    pub _reserved: [u8; 64],            // 64
+    pub liquidation_guard: u8,          // 1   Phase 8 (ADR-0013): 1 while a liquidation callback CPI is
+                                         //     in flight on this market, 0 otherwise. Checked at the top
+                                         //     of `liquidate`; never touched by any other instruction.
+    pub _reserved: [u8; 63],            // 63
 }
-// 8 + ~633 ≈ 641 bytes. Well under 10 KB; single-allocation, no realloc needed.
+// 8 + ~633 ≈ 641 bytes. Well under 10 KB; single-allocation, no realloc needed. `Market::LEN` is
+// unchanged at 640 after ADR-0013's addition — one byte moved from _reserved to liquidation_guard.
 ```
 
 **Size note:** at Agave 4.2's reduced rent (`lamports_per_byte` 6960 → 696), ~641 bytes costs roughly
@@ -245,11 +249,17 @@ be reviewed exhaustively.
 | loan_vault → user | `withdraw`, `borrow` | market PDA |
 | user → collateral_vault | `deposit_collateral` | user signature |
 | collateral_vault → user | `withdraw_collateral` | market PDA |
-| collateral_vault → liquidator | `liquidate` (seizure) | market PDA |
+| collateral_vault → liquidator | `liquidate` (seizure, no callback) | market PDA |
 | collateral_vault → admin | `withdraw_collateral_fees` | market PDA |
+| collateral_vault → callback_collateral_account | `liquidate` (seizure, callback branch — Phase 8, ADR-0013) | market PDA |
 
-**Six paths. That is the complete custody surface.** Any code path moving tokens that is not on this
-list is a bug. This table is duplicated in the security review checklist for Phase 13.
+**Seven paths.** Phase 8 adds one new *destination* for the existing market-PDA-signed seizure leg —
+not a new kind of authority. (What the untrusted callback does with the tokens after that point, e.g.
+transferring swap proceeds into `loan_vault`, is the callback's *own* CPI, signed by its own authority,
+and is deliberately outside this enumeration: Aegis never signs for it and never trusts it, only
+measures the resulting `loan_vault` delta.) That is the complete custody surface **that Aegis itself
+signs for**. Any code path moving tokens that is not on this list, with Aegis as the signer, is a bug.
+This table is duplicated in the security review checklist for Phase 13.
 
 ### 6.4 Measured-delta accounting (mandatory)
 

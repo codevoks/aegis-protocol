@@ -111,6 +111,25 @@ pub fn handler(ctx: Context<Repay>, assets: u64, shares: u128) -> Result<()> {
     )
     .map_err(AegisError::from)?;
 
+    // T-17 / INV-ACC-06 (Phase 10 finding, `docs/security/findings.md` F-10-02): when this
+    // position holds ALL of the market's outstanding borrow shares (so no other position's claim
+    // is affected by what follows) and this repayment already consumes the pool's entire
+    // remaining `total_borrow_assets`, the VIRTUAL_SHARES/VIRTUAL_ASSETS-adjusted floor/ceil round
+    // trip through `to_shares_down` then `to_assets_up` can leave a nonzero "dust" share
+    // remainder on the books that is worth exactly zero by the market's own valuation from this
+    // point on (`total_borrow_assets == 0` makes `utilization()` read `0`, so `borrow_rate` is `0`
+    // and no future `accrue_interest` ever adds assets back to un-strand it -- a permanent
+    // INV-ACC-06 violation, not a transient one). Writing off dust that the market already prices
+    // at zero does not change `assets_to_pull` (the payer is charged no more) and only ever
+    // applies in this single-holder case, so no other lender's or borrower's claim is affected.
+    let clamped_shares = if ctx.accounts.position.borrow_shares == market.total_borrow_shares
+        && assets_to_pull >= market.total_borrow_assets
+    {
+        ctx.accounts.position.borrow_shares
+    } else {
+        clamped_shares
+    };
+
     let credited = transfer_checked_in(
         &ctx.accounts.payer_loan_ata.to_account_info(),
         &ctx.accounts.loan_mint.to_account_info(),

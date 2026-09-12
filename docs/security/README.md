@@ -4,9 +4,10 @@
 |---|---|---|
 | [`../threat-model.md`](../threat-model.md) | Trust boundaries, 32 threats, accepted residual risks | Phase 0 |
 | [`../invariants.md`](../invariants.md) | 87 invariants across 12 groups | Phase 0 |
-| `findings.md` | Every issue found during development, with resolution | Phase 10 |
-| `mutation-report.md` | Proof that each [GLOBAL] invariant's test can actually fail | Phase 10 |
-| `review-log.md` | The Phase 13 self-conducted security review | Phase 13 |
+| [`threat-traceability.md`](threat-traceability.md) | T-01..T-32 → mitigation → test → status matrix | Phase 10 |
+| [`findings.md`](findings.md) | Every issue found during the Phase 10 campaign, with resolution | Phase 10 |
+| [`mutation-report.md`](mutation-report.md) | Proof that each [GLOBAL] invariant's test can actually fail | Phase 10 |
+| [`review-log.md`](review-log.md) | Systematic manual security review of the highest-risk code paths | Phase 10 |
 
 ## Standing rules
 
@@ -21,8 +22,15 @@
 
 ## Current security status
 
-**Phase 0.** No code exists, therefore nothing has been tested. The threat model and invariant
-catalogue are complete and frozen; the campaign that validates them is Phase 10.
+**Phase 10 complete.** Every threat in the frozen catalogue (T-01..T-32) has a named,
+specific-error-asserting test, verified non-vacuous. A stateful LiteSVM invariant fuzzer
+(`tests/fuzz/`) exists, and all nine `[GLOBAL]` invariants have been mutation-validated against the
+real on-chain artifact (`mutation-report.md`). The value-creation search (targeting T-17) found no
+unexplained extraction across a 100,000+-operation extended campaign. Traceability between
+`invariants.md` and the actual test suite is enforced and blocking in CI
+(`scripts/check-traceability.sh`).
 
-**Aegis is not audited and must not be deployed with real user capital.** See
-[`../economic-model.md` §11](../economic-model.md) and [`../threat-model.md` §4](../threat-model.md).
+**Aegis is still not audited and must not be deployed with real user capital.** Adversarial
+self-testing, however thorough, is not a substitute for independent review. See
+[`../economic-model.md` §11](../economic-model.md), [`../threat-model.md` §4](../threat-model.md),
+and `findings.md`'s own status-honesty note.

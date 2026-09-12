@@ -1,8 +1,8 @@
 # Aegis — Project Status
 
 **Last updated: 2026-09-12**
-**Current phase: Phase 9 — SDK, client & UI — COMPLETE**
-**Next phase: Phase 10 — Security campaign — NOT STARTED**
+**Current phase: Phase 10 — Adversarial, Property and Fuzz Security Campaign — COMPLETE**
+**Next phase: Phase 11 — Performance — NOT STARTED**
 
 > This file is the first thing any contributor or model reads after `AGENTS.md`. It must always
 > reflect reality. **"Implemented" never means "verified."** The five states below are tracked
@@ -39,7 +39,7 @@ rounded up.
 | 7 | Token-2022 Completion | ✅ **COMPLETE** | `phase-07-token2022` |
 | 8 | Composability | ✅ **COMPLETE** | `phase-08-composability` |
 | 9 | SDK, client & UI | ✅ **COMPLETE** | `phase-09-sdk-ui` |
-| 10 | Security campaign | ⬜ NOT STARTED | — |
+| 10 | Security campaign | ✅ **COMPLETE** | `phase-10-security` |
 | 11 | Performance | ⬜ NOT STARTED | — |
 | 12 | Governance & upgrades | ⬜ NOT STARTED | — |
 | 13 | Integration & release | ⬜ NOT STARTED | — |
@@ -122,7 +122,7 @@ No code in `programs/aegis/src` changed in this phase; every change is in `crate
 | Liquidation & bad debt (`liquidate`, `absorb_bad_debt`, `withdraw_collateral_fees`) | ✅ | ✅ | ✅ | ✅ | ⬜ |
 | Governance & migrations | ⬜ | ⬜ | ⬜ | ✅ | ⬜ |
 | `aegis-test-kit` (mints, market/position lifecycle, user token accounts, invariant checker, borrow-state injection, `pyth_fixture` byte-exact `PriceUpdateV2` construction, `liquidate`/`absorb_bad_debt`/`withdraw_collateral_fees` helpers) | ✅ | ✅ | ✅ | ✅ | ⬜ |
-| Invariant fuzzer | ⬜ | ⬜ | ⬜ | ✅ | ⬜ |
+| Invariant fuzzer (`tests/fuzz/`: 2 markets, 6 actors, 9 mutation-validated `[GLOBAL]` invariants, value-creation search) | ✅ | ✅ | ✅ | ✅ | ⬜ |
 | CU benchmarks | ⬜ | ⬜ | ⬜ | ✅ | ⬜ |
 | `labs/` (Anchor/native/Pinocchio) | ⬜ | ⬜ | ⬜ | ✅ | ⬜ |
 | TypeScript SDK (`@aegis/sdk`: codegen, pda/accounts/math/read/oracle/ix/tx/errors/events) | ✅ | ✅ | ✅ | ✅ | ⬜ |
@@ -3757,7 +3757,175 @@ found and fixed as part of this same phase, not left as findings).
 
 ---
 
+## Phase 10 — evidence
+
+**Phase 10 is complete.** Scope per `docs/phases/phase-10-security.md`: complete adversarial
+coverage for T-01..T-32, a stateful LiteSVM invariant fuzzer, mutation validation of all nine
+`[GLOBAL]` invariants, a value-creation search targeting T-17, invariant/test traceability
+enforcement, and transparent security documentation.
+
+### 0. Phase gate (verified before any code was written)
+
+```
+$ git log -1 --format="%H %s" phase-09-sdk-ui
+8e9cf409fce93fc8560e3a53b2aa432e8ef159f8 docs(phase-9): record Phase 9 completion evidence, RV-7 resolution, and README updates
+$ git log -1 --format="%H %s" HEAD
+8e9cf409fce93fc8560e3a53b2aa432e8ef159f8 docs(phase-9): record Phase 9 completion evidence, RV-7 resolution, and README updates
+```
+Tag == HEAD == origin/main. Working tree clean. Baseline `cargo test --workspace --offline`: 236
+passed, 0 failed, across 32 test-result blocks. `cargo fmt --all --check` and `cargo clippy
+--workspace --all-targets -- -D warnings` both clean. No `tests/adversarial/`, no `tests/fuzz/`;
+`docs/security/` held only its README — Phase 10 genuinely not started.
+
+### 1. Threat traceability
+
+Every threat T-01..T-32 in `docs/threat-model.md` §2 was read directly (not from a prior session)
+and cross-checked by `grep` against the actual test suite. Full matrix:
+`docs/security/threat-traceability.md`. Result: 30 of 32 already had a real, specific-error test
+from earlier phases (this repository's established practice of early coverage); T-20 and T-30 are
+documented, accepted, not-testable-in-protocol residual risks by design. Two citation gaps closed
+(`A-SOLV-01`, `F-INV-01..07` — pre-existing behavior that had never been literally cited by that
+exact ID in source) and one new exploit-regression test added (`A-DUST-01`, from the F-10-02
+finding below). Three threats (T-01, T-06 twice — `A-LIQ-01` and `A-ORACLE-06`) were spot-checked
+this phase via live mitigation removal against the rebuilt on-chain artifact, confirming
+non-vacuity directly rather than only trusting the historical record.
+
+### 2. Stateful invariant fuzzer
+
+`tests/fuzz/`: two markets in one `LiteSVM` instance (classic SPL/SPL; Token-2022 transfer-fee
+collateral), six actors (two lenders, two borrowers, a liquidator, an attacker), a weighted action
+generator covering deposit/withdraw collateral, supply/withdraw, borrow/repay, accrue_interest,
+liquidate, absorb_bad_debt, withdraw_collateral_fees, warp_time and move_price as first-class
+operations, and biased boundary-adjacent amount sampling (0, 1, dust, exact-balance, near-max,
+min_debt±1, and a 15% uniform fallback for coverage). Every action asserts the applicable
+**[GLOBAL]** invariants (`crates/aegis-test-kit/src/invariants.rs::assert_all_global`, plus
+action-specific INV-SOLV-01/INV-ACC-04 checks) whether it succeeded or failed, and asserts
+byte-exact failed-operation atomicity on failure. Seeded and fully reproducible
+(`fuzz_determinism_same_seed_same_trace`); a coarse-to-fine ("ddmin") trace shrinker minimizes any
+failure to a small reproduction, bounded by a hard replay cap so shrinking itself can never run
+unbounded.
+
+```
+$ cargo test --test fuzz --offline
+test fuzz_shrink_reproduces_on_a_synthetic_failure ... ok
+test fuzz_determinism_same_seed_same_trace ... ok
+[fuzz-ci] TOTALS seeds=6 ops=1500 succeeded=845 failed=655
+test fuzz_ci_bounded_campaign ... ok
+test result: ok. 3 passed; 0 failed; 3 ignored (extended campaign + 2 manual mutation probes)
+```
+
+### 3. Mutation validation — all nine GLOBAL invariants
+
+Full procedure, results table, and two honestly-recorded findings (a test-harness bug that
+initially produced a false "not detected," and two literal mutations proven architecturally inert
+by the token program's own CPI-level balance backstop, requiring adjusted mutations) in
+`docs/security/mutation-report.md`. **All nine caught within a bounded 20,000-operation budget**
+(worst case: 2,001 operations; most caught in under 500).
+
+### 4. A real bug, found and fixed — F-10-02
+
+The extended fuzz campaign found a genuine, previously-unknown, reproducible violation of
+INV-ACC-06 against the **correct, unmutated** program (seed 21, step 3628): `repay`'s
+`assets`-denominated path could, when a market's `total_borrow_assets` had been repaid down to a
+tiny remainder held entirely by one position, leave that position with a small nonzero "dust"
+share balance while `total_borrow_assets` reached exactly zero — a permanent inconsistency, since
+zero borrow-assets makes `utilization()` read zero and no future interest ever accrues to un-stick
+it. Root-caused to the `VIRTUAL_SHARES`/`VIRTUAL_ASSETS`-adjusted floor/ceil round trip between
+`to_shares_down` and `to_assets_up` at these tiny magnitudes. Fixed in
+`programs/aegis/src/instructions/borrow/repay.rs` (full details, severity assessment, and the
+scope-check for the same pattern in `liquidate.rs`: `docs/security/findings.md` F-10-02). Frozen as
+a permanent regression, following the required order — reproduce, freeze the failing test, confirm
+it fails against the vulnerable code, fix, confirm it passes — in
+`tests/adversarial/dust_debt.rs::a_dust_01_repay_of_the_last_borrower_never_strands_shares_without_assets`.
+
+### 5. Value-creation search (T-17)
+
+Conservation model documented in `tests/fuzz/ledger.rs`'s module doc
+comment: collateral-side round-tripping is checked as an exact, always-on bound (collateral never
+earns yield); loan-side round-tripping is checked against contribution plus the market's entire
+lifetime accrued interest, a deliberately conservative upper bound complementing (not replacing)
+`aegis-math`'s exact `P-SHARE-1..4` property tests. This search is what found F-10-02.
+
+```
+$ make fuzz   # 25 seeds x 4,000 ops = 100,000 operations
+[fuzz-extended] seed=21 succeeded=2493 failed=1507   <-- the exact seed that found F-10-02
+[fuzz-extended] TOTALS seeds=25 ops=100000 succeeded=64132 failed=35868
+test fuzz_extended_campaign ... ok
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 5 filtered out; finished in 742.36s
+```
+This is the post-fix acceptance run: seed 21 (the exact seed that crashed pre-fix) now completes
+cleanly, and zero violations occur across the full 100,000 operations. An earlier run under this
+same command, before the fix, is what found F-10-02 in the first place — see
+`docs/security/mutation-report.md`'s campaign-statistics section for the full three-run history.
+
+### 6. Traceability enforcement
+
+`scripts/check-traceability.sh` parses `docs/invariants.md` directly (never a hand-maintained
+second list), expands range notations (`A-ORACLE-03..11`), skips rows assigned to a phase this
+repository has not reached (11+), and asserts every cited test ID exists in source. Already
+blocking in CI with no workflow change needed: `.github/workflows/ci.yml`'s `guards` job runs every
+`scripts/check-*.sh`, and this script's filename matches that glob. Fail-behavior proven directly:
+a temporary fake test ID injected into a copy of the row, script run (fails, names the missing ID
+and the offending row), doc restored (`git diff` empty), script re-run (passes).
+
+```
+$ ./scripts/check-traceability.sh
+check-traceability: OK — 83 test id(s) referenced by docs/invariants.md (phase <= 10) all exist
+```
+
+### 7. Manual review log
+
+Systematic, freshly-read (not inherited) review of account constraints, signer boundaries, PDA
+seeds, vault ownership, token-program validation, measured-delta paths, accounting totals, rounding
+direction, oracle validation order, interest accrual, health/LTV, liquidation, bad debt, Token-2022
+policy, CPI callback safety, post-CPI reload, admin authority, pause behavior, resource/DoS surface,
+and SDK numeric-precision assumptions, plus an explicit panic search (zero `.unwrap()`/`.expect()`
+in production code paths). Full log: `docs/security/review-log.md`.
+
+### 8. Full regression
+
+```
+$ cargo fmt --all --check
+(exit 0, no output)
+
+$ cargo clippy --workspace --all-targets -- -D warnings
+    Finished `dev` profile [unoptimized + debuginfo] target(s) in 10.15s
+(zero warnings)
+
+$ cargo test --workspace --offline
+test result: ok. 240 passed; 0 failed ... (34 test-result blocks total, up from 32 at the Phase 9
+baseline: +1 for tests/fuzz.rs, +1 for tests/adversarial.rs)
+
+$ for s in scripts/check-*.sh; do ./"$s"; done
+(all OK, including the new check-traceability.sh)
+```
+
+### 9. Deviations
+
+- **Two of the nine literal mutations in `phase-10-security.md`'s own table** ("skip the
+  free-liquidity check in `withdraw`"; "remove the borrow liquidity check") were found, on
+  direct rebuild-and-test analysis, to be architecturally inert given this codebase's CPI-level
+  balance backstop — not a fuzzer gap. Both were replaced with an adjusted mutation that
+  genuinely exercises the same invariant (direct accounting desync rather than removing a
+  redundant precondition). Recorded as `docs/security/mutation-report.md`'s "Finding 2," per
+  `phase-10-security.md` #5's explicit instruction not to force a match through a contrived
+  scenario.
+- **Not all 32 threats received a fresh, live mitigation-removal cycle this phase** — three were
+  spot-checked directly (T-01, and T-06 twice); the remaining 29 rely on the historical record that
+  each was proven non-vacuous when its test was originally written, under this repository's own
+  standing AGENTS.md §8 discipline ("an invariant without a falsifying test is a hope"), verified
+  this phase only via traceability (the test exists and currently passes), not via a fresh removal
+  cycle for every one of the 32. Stated plainly as a scope decision, not a silent gap.
+- **The liquidation callback path (`labs/hostile-callback`, Phase 8) was not re-fuzzed inside the
+  stateful campaign** — building full callback-CPI support into the generic action generator was
+  judged disproportionate additional complexity given `A-CPI-01..04` already provides dedicated,
+  atomic-rollback-proven coverage of that surface (Phase 8). Recorded as a scope decision.
+- No ADR was written this phase: no frozen document's formula, invariant, or account model changed
+  — the F-10-02 fix corrects the *code* to actually implement the already-frozen INV-ACC-06, it
+  does not change what INV-ACC-06 or any economic formula says.
+
+---
+
 ## Next action
 
-**Phase 9 is complete. Hand Phase 10 (Security campaign) to the implementation model when the
-maintainer explicitly authorizes it. Phase 10 has NOT been started.**
+**Phase 10 is complete. Phase 11 (Performance) has NOT been started.**

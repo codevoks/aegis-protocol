@@ -1,8 +1,8 @@
 # Aegis — Project Status
 
 **Last updated: 2026-09-12**
-**Current phase: Phase 8 — Composability — COMPLETE**
-**Next phase: Phase 9 — SDK, client & UI — NOT STARTED**
+**Current phase: Phase 9 — SDK, client & UI — COMPLETE**
+**Next phase: Phase 10 — Security campaign — NOT STARTED**
 
 > This file is the first thing any contributor or model reads after `AGENTS.md`. It must always
 > reflect reality. **"Implemented" never means "verified."** The five states below are tracked
@@ -38,7 +38,7 @@ rounded up.
 | 6 | Health, liquidation & bad debt | ✅ **COMPLETE** | `phase-06-liquidation` |
 | 7 | Token-2022 Completion | ✅ **COMPLETE** | `phase-07-token2022` |
 | 8 | Composability | ✅ **COMPLETE** | `phase-08-composability` |
-| 9 | SDK, client & UI | ⬜ NOT STARTED | — |
+| 9 | SDK, client & UI | ✅ **COMPLETE** | `phase-09-sdk-ui` |
 | 10 | Security campaign | ⬜ NOT STARTED | — |
 | 11 | Performance | ⬜ NOT STARTED | — |
 | 12 | Governance & upgrades | ⬜ NOT STARTED | — |
@@ -125,8 +125,8 @@ No code in `programs/aegis/src` changed in this phase; every change is in `crate
 | Invariant fuzzer | ⬜ | ⬜ | ⬜ | ✅ | ⬜ |
 | CU benchmarks | ⬜ | ⬜ | ⬜ | ✅ | ⬜ |
 | `labs/` (Anchor/native/Pinocchio) | ⬜ | ⬜ | ⬜ | ✅ | ⬜ |
-| TypeScript SDK | ⬜ | ⬜ | ⬜ | ✅ | ⬜ |
-| Web app | ⬜ | ⬜ | ⬜ | ✅ | ⬜ |
+| TypeScript SDK (`@aegis/sdk`: codegen, pda/accounts/math/read/oracle/ix/tx/errors/events) | ✅ | ✅ | ✅ | ✅ | ⬜ |
+| Web app (`app/`: market list, position screen, deposit/borrow/repay/withdraw, demo) | ✅ | ✅ | ✅ | ✅ | ⬜ |
 | Liquidator bot | ⬜ | ⬜ | ⬜ | ✅ | ⬜ |
 
 `COMMIT` columns above turn ✅ only once this phase's commit and tag are pushed and verified against
@@ -280,8 +280,11 @@ phase's regression pass (§17 below). **Note:** `docs/invariants.md` has no `INV
 only Token-2022-relevant invariants in the frozen 87 are the `INV-CUS-05/06/07` rows above. Any
 reference to `INV-TOK-*` is a naming assumption to flag, not a document to invent additions into.
 
-Still **0 of the 87 numbered `invariants.md` invariants assigned to Phases 8-13** are implemented
-or tested — expected at this point; see `docs/invariants.md` for the full per-phase assignment.
+Phases 8 and 9 each closed the one row `docs/invariants.md` assigns them (`INV-AUTH-07`/`INV-RES-07`
+via Phase 8's callback design, `INV-RES-06` via Phase 9's `I-TX-01` — see each phase's own evidence
+section below for the exact mapping). **0 of the 87 numbered invariants assigned to Phases 10-13**
+are implemented or tested yet — expected at this point; see `docs/invariants.md` for the full
+per-phase assignment.
 
 ---
 
@@ -375,7 +378,7 @@ rediscover them.
 | RV-4 | `VerificationLevel` shape in `pyth-solana-receiver-sdk` 2.x | 5 | ✅ **RESOLVED** — `enum { Partial { num_signatures: u8 }, Full }`; see `docs/ecosystem-research.md` §15.2 |
 | RV-5 | Complete current Token-2022 extension list and discriminants | 7 | ✅ **RESOLVED** — `spl-token-2022-interface` 2.1.0; see `docs/token-compatibility.md` §0 |
 | RV-6 | Does the runtime permit `A → B → A` CPI reentrancy? | 8 | OPEN |
-| RV-7 | SIMD-0296 (4096-byte tx) availability and `@solana/kit` support | 9 | OPEN |
+| RV-7 | SIMD-0296 (4096-byte tx) availability and `@solana/kit` support | 9 | ✅ **RESOLVED** — see `docs/ecosystem-research.md` §17: active on testnet/devnet and on local Surfpool ≥1.5.0 since 2026-08-24 (Aegis's actual target cluster), pending mainnet (epoch 1035, ≈2026-09-15); `@solana/kit` 8.0.0+ supports it. Aegis designs to the classic 1232-byte limit regardless (`I-TX-01`) |
 | RV-8 | Current Jupiter integration surface | 8 | OPEN |
 
 ## Known issues
@@ -506,6 +509,85 @@ on-chain against a Surfpool mainnet fork was not attempted (documented as **NOT 
 inconsistency (this checkout's `target/deploy/aegis-keypair.json` did not match `declare_id!`) was
 found and fixed during this phase because it blocks *any* real on-chain interaction with the
 deployed program, not merely the TS demo specifically — see §10.
+
+**Phase 9 is complete.** No on-chain change: `programs/aegis` is byte-for-byte unmodified from
+Phase 8, confirmed by the full offline Rust regression (§17 below) passing unchanged. **RV-7**
+(SIMD-0296 / the 4096-byte "v1" transaction format) is closed with primary sources
+(`docs/ecosystem-research.md` §17): active on testnet/devnet and already available on local
+Surfpool ≥1.5.0 (Aegis's actual target cluster) since 2026-08-24, pending mainnet activation at
+epoch 1035 (≈2026-09-15); `@solana/kit` 8.3.0 (the version this workspace installs) supports it
+fully. Per the phase's own non-negotiable requirement, none of this is used — every transaction
+this SDK builds is measured and asserted against the classic 1232-byte legacy limit (`I-TX-01`,
+`INV-RES-06`), with no address lookup table anywhere. `sdk/ts/` (`@aegis/sdk`) is built entirely on
+`@solana/kit` 8.3.0 and `@anchor-lang/core` 1.2.0 — grep-verified to contain no direct
+`@coral-xyz/anchor` or `@solana/web3.js` import anywhere in its own source or the app's; the one
+`@solana/web3.js` dependency `npm ls` shows is an unavoidable transitive dependency *of*
+`@anchor-lang/core` itself (its Borsh coder still produces/consumes legacy `PublicKey`/`BN`-shaped
+values internally), the identical pre-existing situation Phase 8's `bots/liquidator/` already has.
+IDL codegen (`sdk/ts/scripts/codegen.mjs`) derives every generated artifact
+(`sdk/ts/src/generated/{idl,types,accounts,instructions,events,errors}.ts`) — discriminators, field
+layouts, and per-instruction account-meta order/writability/signer/optionality — directly from
+`target/idl/aegis.json` (Anchor 1.x's Program Metadata layout); nothing is hand-duplicated, and
+`ixEngine.ts`'s one generic `buildGenericInstruction` function (used by every generated
+`build<Instruction>Instruction`) assembles a correctly-ordered, correctly-flagged account-meta list
+from that schema alone — a genuine improvement over Phase 8's necessarily hand-written
+per-instruction account arrays (`bots/liquidator/src/txBuilders.ts`), which existed before this
+codegen did. `npm run codegen:check` / `make codegen-check` is proven (not merely asserted) to
+detect a stale commit by tampering with a generated file and observing the check fail, then
+restoring it and observing the check pass again (§17 below).
+
+Cross-language math parity (**I-SDK-01**) uses the identical mechanism `docs/phases/phase-09-sdk-ui.md`
+requires: a new Rust binary, `crates/aegis-test-kit/examples/phase9_vectors_dump.rs` — TEST CODE
+ONLY, no changes to `programs/aegis` or `crates/aegis-math` — calls the real, frozen `aegis-math`
+functions directly and emits `tests/vectors/{fixed,shares,irm,health,liquidation,pdas}.json`;
+`sdk/ts/test/vectors.test.ts` asserts `sdk/ts/src/math.ts` (bigint throughout, no `Number` in any
+protocol-critical path) against those committed vectors bit-for-bit — 48 assertions, zero
+hand-typed expected values. `make vectors-check` / `scripts/check-vectors.sh` is proven the same
+way `check-codegen.mjs` is: tampering with a committed vector file makes it fail, restoring it
+makes it pass. **I-SDK-03** (PDA parity) reuses the exact `Pubkey::find_program_address`-based
+helpers every Rust test in this repository already calls (`crates/aegis-test-kit/src/market.rs`)
+to emit `tests/vectors/pdas.json`, including two `config_id` values (`1` and `256`) chosen
+specifically so a `u16` little-endian-vs-big-endian seed-encoding mistake in `sdk/ts/src/pda.ts`
+would derive a *different* market address, not merely a wrong one — `sdk/ts/test/pda.test.ts`
+passes all 12 cases, including an explicit assertion that those two addresses differ.
+
+**I-TX-01 / INV-RES-06** (`sdk/ts/test/tx-size.test.ts`) builds a REAL signed transaction — a real
+generated Ed25519 fee-payer signer, a real `ComputeBudget` instruction, a real blockhash-shaped
+lifetime, `@solana/kit`'s own v0 message compiler and transaction codec — for every user-facing
+instruction, including `liquidate` both without and with a realistic callback account surface
+(ADR-0013's `remaining_accounts` pattern), and asserts the exact serialized byte count via
+`@solana/transactions`' own `getTransactionSize`/`isTransactionWithinSizeLimit`. **No architectural
+blocker was found**: the largest transaction (`liquidate` with a callback) is 801 bytes, well under
+the 1232-byte limit, with 431 bytes of headroom. Full table in §17 below.
+
+**I-SDK-02** (`sdk/ts/test/e2e.test.ts`) runs the complete lifecycle — `initialize_protocol`,
+`create_market`, `init_position` bundled with a lender's first `supply` and a borrower's first
+`deposit_collateral` (item 16's init-bundling, `ix.ts::withInitPositionIfNeeded`), `borrow`,
+`accrue_interest`, `repay`, `withdraw_collateral`, `close_position`, a lender `withdraw`, and a
+scripted-price-drop `liquidate` — against a real, local, **offline** Surfpool validator this test
+starts, deploys the real `aegis.so` to, and tears down itself; every step asserts the resulting
+account state and decoded event, never merely "the transaction did not throw." Deterministic Pyth
+`PriceUpdateV2` fixtures are injected via the exact same `aegis_test_kit::PriceFixture`-generated
+bytes Phase 8's own demo already uses (`crates/aegis-test-kit/examples/phase8_price_fixture_dump.rs`),
+reused rather than reimplemented, over `surfnet_setAccount` — zero network, zero Hermes.
+
+The `app/` Next.js application (Pages: `/`, `/market/[address]`, `/demo`) consumes `@aegis/sdk`
+exclusively for every read and every transaction — no hand-coded account parsing or instruction
+building in a React component. It surfaces every required market risk parameter (`ack_freeze_authority`,
+oracle staleness bound, oracle max confidence, pause bits) and position health (collateral, debt,
+health factor, LTV, liquidation price) via `read.ts`'s `MarketView`/`PositionView`. Wallet connection
+is a local, `@solana/kit`-native ephemeral signer (`app/src/lib/localSigner.ts`) — a deliberate,
+disclosed scope decision (see DEVIATIONS) rather than a browser wallet-extension adapter, both
+because `make app`'s clean-clone acceptance criterion must not depend on a specific browser
+extension being installed and because current wallet-adapter packages generally carry the same
+unavoidable transitive `@solana/web3.js` dependency already discussed above. **I-UI-01** (the full
+local user flow) was exercised for real, in a real browser, against a real local Surfpool validator
+running the real deployed program, using the Claude Browser tool — not merely asserted; the full
+transcript is in §17 below, including the two real bugs this exercise found and fixed (a
+duplicate-mutable-account error from reusing the lender's own address as the market's fee
+recipient, and an oracle-staleness failure from using the browser's wall-clock instead of the
+warped validator's own `Clock` sysvar for a freshly-injected price fixture) — recorded as findings,
+not smoothed over.
 
 ---
 
@@ -3357,7 +3439,325 @@ change to the design.
 
 ---
 
+## Phase 9 — evidence
+
+### 0. Phase gate (verified before any code was written)
+
+```
+$ git log -1 --format="%H %s" phase-08-composability
+16cde79... docs(phase-8): record Phase 8 completion evidence, RV-6/RV-8 resolution, ADR-0013, and README
+$ git log -1 --format="%H %s" HEAD
+16cde79... docs(phase-8): record Phase 8 completion evidence, RV-6/RV-8 resolution, ADR-0013, and README
+```
+
+Tag == HEAD == `origin/main`. Working tree clean. `target/idl/aegis.json` and
+`target/deploy/aegis.so` already existed (built earlier the same session) and were used as-is —
+`anchor build` was not re-run, since no on-chain source changed at any point in this phase.
+
+### 1. RV-7 — closed before any SDK code was written
+
+Full write-up: `docs/ecosystem-research.md` §17. Summary: SIMD-0296 (the 4096-byte "v1" transaction
+format, SIMD-0385) is active on testnet/devnet and has been available for local testing on Surfpool
+≥1.5.0 — this workspace's exact pinned version — since 2026-08-24; mainnet activation is scheduled
+for epoch 1035 (≈2026-09-15), three days after this research date. `@solana/kit` 8.0.0+ (this
+workspace has 8.3.0) supports building/signing/sending v1 transactions. **None of this is used**:
+Aegis designs and tests to the classic 1232-byte legacy limit unconditionally (ADR-0011,
+`I-TX-01`), so the finding is recorded as closed research, not as a design input.
+
+### 2. SDK package and dependency proof
+
+```
+$ cd sdk/ts && npm ls @anchor-lang/core @solana/kit
+@aegis/sdk@0.1.0
+├── @anchor-lang/core@1.2.0
+└── @solana/kit@8.3.0
+
+$ grep -rln "@coral-xyz/anchor" src/ test/
+(no output)
+$ grep -rln "@solana/web3\.js" src/ test/ | grep -v -- '-- comment'
+src/anchorCoder.ts   # doc comment only, explaining the coder's OWN transitive dependency
+src/index.ts         # doc comment only, stating the prohibition
+$ npm ls @solana/web3.js
+@aegis/sdk@0.1.0
+└─┬ @anchor-lang/core@1.2.0
+  ├── @solana/web3.js@1.99.0 deduped
+  └─┬ @anchor-lang/borsh@1.2.0
+    └── @solana/web3.js@1.99.0
+```
+
+The only `@solana/web3.js` in the dependency tree is transitive, *inside* `@anchor-lang/core`
+itself — identical to the situation already documented and accepted in Phase 8
+(`bots/liquidator/` shows the exact same `npm ls` shape). Neither `@coral-xyz/anchor` nor
+`@solana/web3.js` is imported by any line of this SDK's or the app's own source.
+
+### 3. IDL codegen and stale-detection proof
+
+```
+$ cd sdk/ts && npm run codegen
+Codegen complete. Wrote .../sdk/ts/src/generated
+  15 instructions, 3 accounts, 14 events, 59 errors, 19 types.
+
+$ npm run codegen:check
+check-codegen: OK -- sdk/ts/src/generated/ matches the current IDL exactly
+
+# Proof the check actually fires (not merely present):
+$ echo "// tamper" >> src/generated/errors.ts && npm run codegen:check; echo "exit=$?"
+check-codegen: STALE -- errors.ts differs from current `target/idl/aegis.json`
+exit=1
+$ git checkout -- src/generated/errors.ts && npm run codegen:check
+check-codegen: OK -- sdk/ts/src/generated/ matches the current IDL exactly
+```
+
+Every account/instruction/event discriminator and every per-instruction account
+name/writable/signer/optional flag in `sdk/ts/src/generated/instructions.ts` is read directly out
+of `target/idl/aegis.json` (`sdk/ts/scripts/codegen.mjs`) — none is hand-typed.
+
+### 4. I-SDK-03 — PDA parity
+
+```
+$ cargo run -p aegis-test-kit --example phase9_vectors_dump -- tests/vectors
+wrote tests/vectors/pdas.json  (+ fixed/shares/irm/health/liquidation.json)
+
+$ cd sdk/ts && npx vitest run test/pda.test.ts
+ ✓ test/pda.test.ts (12 tests)
+   ✓ protocol PDA matches exactly
+   ✓ market/vault PDAs match exactly: market_a_b_config_0 / _1 / _256 / _max / market_b_a_config_0 / market_zero_ff_config_42
+   ✓ position PDA matches exactly: position_owner_a / _owner_b / _fee_recipient / _all_zero_owner
+   ✓ config_id=1 and config_id=256 derive to DIFFERENT addresses (endian sanity check)
+```
+
+`tests/vectors/pdas.json` is generated by calling `crates/aegis-test-kit/src/market.rs`'s own
+`protocol_pda`/`market_pda`/`position_pda`/`collateral_vault_pda`/`loan_vault_pda` — the identical
+functions every other Rust test in this repository already uses — never a re-derivation.
+`config_id` 1 and 256 are the exact mirror-image byte patterns (`[0x01,0x00]` vs. `[0x00,0x01]` in
+`u16` little-endian) chosen so a big-endian mistake in `pda.ts`'s seed encoding would produce a
+*different* address, not merely an incorrect one; the dedicated test asserts they differ.
+
+### 5. I-SDK-01 — cross-language math vectors
+
+```
+$ make vectors
+wrote tests/vectors/{fixed,shares,irm,health,liquidation,pdas}.json
+
+$ cd sdk/ts && npx vitest run test/vectors.test.ts
+ ✓ test/vectors.test.ts (48 tests)
+
+# Staleness proof:
+$ python3 -c "..." # perturb tests/vectors/fixed.json's first expected value
+$ ./scripts/check-vectors.sh; echo exit=$?
+check-vectors: STALE -- ...
+exit=1
+$ git checkout -- tests/vectors/fixed.json && ./scripts/check-vectors.sh
+check-vectors: OK — tests/vectors/*.json matches current aegis-math output exactly
+```
+
+`crates/aegis-test-kit/examples/phase9_vectors_dump.rs` calls `aegis-math`'s real, frozen functions
+(`mul_div_floor/ceil`, `to_shares_*`/`to_assets_*`, `utilization`, `borrow_rate`, `taylor3`/
+`taylor_x`, `scale_to_wad_*`, `conservative_price_band`, `collateral_value`, `debt_value`,
+`health_factor`, `is_within_max_ltv`, `max_repay`, `is_liquidatable`,
+`compute_liquidation_by_repay`/`_by_seize`) directly — no reimplementation, no changes to
+`aegis-math` itself. `sdk/ts/src/math.ts`'s 48 assertions all pass against these vectors with zero
+hand-typed expected values, including the exact `economic-model.md` §7.5 worked liquidation
+(repay 900 USDC, seize 9.97035 SOL, protocol cut 0.04748 SOL, ~4.5% net liquidator profit) and the
+collateral-clamp path (§7.2).
+
+### 6. I-TX-01 / INV-RES-06 — transaction size
+
+```
+$ cd sdk/ts && npx vitest run test/tx-size.test.ts
+ ✓ test/tx-size.test.ts (12 tests)
+```
+
+| Instruction | Serialized bytes | <=1232? |
+|---|---|---|
+| `init_position` | 320 | yes |
+| `deposit_collateral` | 426 | yes |
+| `withdraw_collateral` | 492 | yes |
+| `supply` | 475 | yes |
+| `withdraw` | 475 | yes |
+| `borrow` | 541 | yes |
+| `repay` | 475 | yes |
+| `accrue_interest` | 285 | yes |
+| `close_position` | 286 | yes |
+| `liquidate` (no callback) | 639 | yes |
+| `liquidate` (callback, realistic account surface) | **801** | yes |
+
+**No architectural blocker.** `liquidate` with a callback — the instruction the phase spec
+specifically flagged as the one to watch — has 431 bytes of headroom under the classic 1232-byte
+limit. Each transaction includes a real `ComputeBudget` instruction, a real Ed25519 signature, and
+a real blockhash-shaped lifetime; sizes are measured via `@solana/transactions`'
+`getTransactionSize`, never estimated from account count.
+
+### 7. I-SDK-02 — build/sign/send/confirm/decode against local Surfpool
+
+```
+$ make build   # target/deploy/aegis.so, target/idl/aegis.json (unchanged from Phase 8)
+$ cd sdk/ts && npm run test:e2e
+ ✓ test/e2e.test.ts (1 test) 42993ms
+   ✓ runs the full lifecycle: init -> market -> position -> deposit -> borrow -> repay -> withdraw -> liquidate  13008ms
+```
+
+The single end-to-end test exercises, against a real local **offline** Surfpool validator it starts
+and deploys the real `aegis.so` to itself: `initialize_protocol`, `create_market`, `init_position`
+bundled with `supply` (lender) and with `deposit_collateral` (borrower) via
+`ix.ts::withInitPositionIfNeeded`, `borrow`, `accrue_interest`, `repay` (full, via shares),
+`withdraw_collateral`, `close_position`, a lender `withdraw`, and a scripted-price-drop `liquidate`
+— asserting the decoded account state and the decoded event after every step (never merely "did
+not throw"). Deterministic Pyth price fixtures come from the real
+`aegis_test_kit::PriceFixture`-generated bytes (`phase8_price_fixture_dump`), reused rather than
+reimplemented, injected via `surfnet_setAccount`.
+
+### 8. Browser demo — I-UI-01
+
+Run against a real local Surfpool validator (started and deployed to by hand, mirroring
+`scripts/run-app.sh`/`make app`) and a real Next.js dev server, driven with the Claude Browser tool
+(not merely asserted from source review):
+
+1. **Market list (`/`)** — loads, shows "No markets found yet" with a link to `/demo` when empty
+   (a real `getProgramAccounts` round trip to local Surfpool, confirmed via network inspection
+   returning `{"result":[]}`), and the connected local wallet's address/balance/airdrop control in
+   the header.
+2. **`/demo`, step 1** (seed market + position) — real transactions: airdrop, two mint creations,
+   `initialize_protocol`, `create_market`, lender `init_position`+`supply`, borrower
+   `init_position`+`deposit_collateral`, `borrow`. Log: *"Borrower position opened: 10.000000000
+   collateral units, 900.000000 debt units. HF healthy."*
+3. **`/demo`, step 2** (warp time + accrue) — `surfnet_timeTravel` advances the validator's clock
+   30 days with **no real wall-clock wait**; `accrue_interest` then visibly changes
+   `total_borrow_assets` from `900000000` to `900003328` on screen.
+4. **`/demo`, step 3** (crash price + liquidate) — injects a crashed Pyth fixture ($150 → $95/SOL),
+   then liquidates. Final state: `borrow_shares == 0`, `total_borrow_assets == 0`, a small
+   collateral remainder returned to the position — exactly the expected full-liquidation outcome.
+5. **`/market/[address]`** — risk parameters (75%/80% LTV/LT, 3600s staleness bound, 1.00% max
+   confidence, a green "no freeze authority" pill), market stats (supplied/borrowed/available
+   liquidity, utilization/APYs), the connected wallet's own position (health factor rendered as
+   `∞ (no debt)`, correctly), and the six action tabs with an amount input.
+6. **A real action failure, shown honestly** — submitting a `supply` top-up with an empty token
+   balance surfaced `"Transaction simulation failed"` and `status: failed` in the UI, not a false
+   success — proving the confirmation-lifecycle and error-surfacing requirements (items 42-43)
+   under a genuine on-chain rejection, not merely a client-side validation message.
+
+**Two real bugs found and fixed during this exercise** (recorded as findings, not smoothed over):
+
+- The demo's `initialize_protocol` call originally set `feeRecipient` to the same address as the
+  connected wallet, which also acts as lender. Because a market's `fee_position` is
+  `PDA(market, market.fee_recipient)` (`account-model.md` §9), this made `supply`'s `position` and
+  `fee_position` accounts resolve to the identical address — rejected outright by Anchor 1.0's
+  default duplicate-mutable-account protection (`ConstraintDuplicateMutableAccount`, exactly the
+  class of bug AGENTS.md §1 describes Anchor 1.0 as closing "by default"). Fixed by generating a
+  fee-recipient address distinct from every signing identity in the demo.
+- After warping the validator's clock forward with `surfnet_timeTravel`, injecting a price fixture
+  timestamped with the *browser's* real wall-clock time made the price appear ~30 days stale to the
+  on-chain O-5 staleness check (`OraclePriceStale`), since time-travel advances only the
+  validator's `Clock` sysvar, not the host machine's clock. Fixed by adding
+  `app/src/lib/surfnet.ts::getOnChainUnixTimestamp`, which reads the `Clock` sysvar's own
+  `unix_timestamp` directly, and using it for every fixture injected after a warp.
+
+### 9. Regression — full offline suite
+
+```
+$ cargo fmt --all --check
+(exit 0, no output)
+
+$ cargo clippy --workspace --all-targets -- -D warnings
+    Finished `dev` profile [unoptimized + debuginfo] target(s)
+(zero warnings)
+
+$ cargo test --workspace --offline
+32 test-result blocks, 0 failed  (identical to Phase 8's count -- programs/aegis and crates/
+aegis-math are byte-for-byte unchanged this phase)
+
+$ for s in scripts/check-*.sh; do ./"$s"; done
+check-collateral-transfer-paths: OK
+check-cpi-allowlist: OK
+check-no-close: OK
+check-no-dup: OK
+check-no-float: OK
+check-no-init-if-needed: OK
+check-no-slot-time: OK
+check-overflow-checks: OK
+check-vectors: OK          <-- NEW (Phase 9)
+
+$ cd sdk/ts && npx tsc -p tsconfig.json --noEmit
+(exit 0, no output)
+$ npm run codegen:check
+check-codegen: OK
+$ npm run vectors:check
+check-vectors: OK
+$ npm test
+ ✓ test/vectors.test.ts (48 tests)
+ ✓ test/pda.test.ts (12 tests)
+ ✓ test/tx-size.test.ts (12 tests)
+ Test Files  3 passed (3) — Tests  72 passed (72)
+$ npm run test:e2e
+ ✓ test/e2e.test.ts (1 test) — Tests 1 passed (1)
+
+$ cd app && npx tsc --noEmit -p tsconfig.json
+(exit 0, no output)
+$ npx next build --webpack
+✓ Compiled successfully
+✓ Generating static pages (4/4)
+```
+
+Every existing Phase 1-8 Rust test passes **unchanged** — the strongest available evidence that
+this phase's client-side-only scope was actually respected: `programs/aegis` and `crates/aegis-math`
+were not touched.
+
+### 10. INV-RES-06
+
+`docs/invariants.md` §L: *"Every instruction's account count fits a legacy (1232-byte) transaction
+without an address-lookup table. Impl: SDK test. Test: I-TX-01. Phase: 9."* Closed exactly as
+specified — see §6 above. No ALT is used or required anywhere in `sdk/ts/` or `app/`.
+
+### 11. Security self-audit (item 50's checklist)
+
+| Question | Answer |
+|---|---|
+| Any private key handling inside SDK? | No. `ix.ts`/`tx.ts` only ever accept a caller-supplied `TransactionSigner`/`KeyPairSigner`; nothing is generated, stored, or persisted by the SDK itself. |
+| Hardcoded RPC? | No. `config.ts`'s only default is `http://127.0.0.1:8899` / `ws://127.0.0.1:8900`, overridable via env vars. |
+| Hardcoded Hermes? | No. `oracle.ts`'s `HermesOracleClient` takes the endpoint as a required constructor argument with no default. |
+| API key? | None anywhere in `sdk/ts/` or `app/`. |
+| Legacy `web3.js` direct import? | None in this SDK's/app's own source (grep-verified); the sole occurrence is `@anchor-lang/core`'s own unavoidable transitive dependency (§2). |
+| Old Anchor package (`@coral-xyz/anchor`)? | None (grep-verified). |
+| `Number` used for critical amount/math? | No. Every occurrence of `Number(...)` in `sdk/ts/src/` and `app/src/` is a UI-only display conversion (APY%, utilization%, LTV%, HF display), never fed back into a builder — grep-verified and listed explicitly in the SDK README. |
+| PDA seed/endian mismatch? | Verified absent by `I-SDK-03`, including two `config_id` values specifically chosen to catch exactly this class of bug. |
+| Manually duplicated discriminators? | None — all derived from the IDL by `codegen.mjs` (§3). |
+| Stale generated IDL? | `check-codegen.mjs` proven to detect it (§3). |
+| Stale vectors? | `check-vectors.sh` proven to detect it (§5). |
+| Client rounding mismatch? | None found — 48/48 vector assertions pass bit-for-bit. |
+| Unsafe decimal parsing? | `app/src/lib/format.ts::parseDecimalToBaseUnits` does no floating-point multiplication and rejects excess fractional precision explicitly. |
+| Transaction >1232 bytes? | No instruction exceeds 801 bytes (§6). |
+| Hidden ALT use? | None — grep-verified across `sdk/ts/src` and `app/src`. |
+| Builder missing an account-constraint assumption? | Account order/flags come from the IDL itself (`ixEngine.ts`), not a hand-maintained list; `I-SDK-02` exercises every builder against the real on-chain constraints and passes. |
+| SDK permitting unsupported Token-2022 combinations? | The SDK adds no independent token-extension policy of its own — it relies on (and never bypasses) the on-chain `create_market` policy check; `credited` amounts surfaced by `events.ts` are the real on-chain measured-delta values, never recomputed client-side. |
+| App hiding freeze-authority flag? | No — `/market/[address]` shows an explicit labeled pill either way. |
+| App hiding oracle risk parameters? | No — max price age and max confidence are shown explicitly in the Risk parameters card. |
+| UI treating previews as authoritative? | No — every preview (HF, LTV) is computed client-side for display only; the actual instruction always goes on-chain, which is authoritative (demonstrated live by the honest `supply` failure in §8). |
+| Success shown before confirmation? | No — `tx.ts::buildSignSendAndConfirm` only resolves after `sendAndConfirmTransactionFactory` resolves at `commitment: 'confirmed'`; the UI's `status` only reaches `'confirmed'` at that point. |
+| App requiring external network? | No — local Surfpool only; oracle fixtures are injected locally, never fetched from Hermes. |
+| Callback liquidation incorrectly forwarding signers from frontend? | No — `ixEngine.ts`'s `remainingAccounts` parameter only ever sets `is_signer` from an explicit, caller-provided flag (defaulting to `false`); neither the market's nor the liquidator's signer status is ever attached to a remaining account. |
+| Secret wallet committed? | No — every keypair used in tests/demos is either ephemeral (`generateKeyPairSigner`, never written to disk) or a `mktemp`/`os.tmpdir()` file outside the repository; `git status` confirms no keypair-shaped file is staged. |
+
+No findings required a code change beyond what is already reflected above (the two bugs in §8 were
+found and fixed as part of this same phase, not left as findings).
+
+### 12. Deviations
+
+- **No browser wallet-extension adapter.** `app/src/lib/localSigner.ts` uses a `@solana/kit`-native
+  ephemeral local signer instead of Phantom/Backpack/etc. Reasoned in the SDK/app READMEs: `make
+  app`'s clean-clone criterion must not depend on a specific browser extension, and current
+  wallet-adapter packages generally carry the same transitive `@solana/web3.js` dependency already
+  discussed. This is a scope decision within the phase's own stated flexibility (item 27: "using
+  current Solana Kit-compatible frontend patterns"), not a silent omission.
+- **Demo price-account addressing is a local-only convenience.** Aegis has no on-chain registry
+  mapping a market's `feed_id` to a live price-account address (by design — that resolution is
+  inherently off-chain, normally Hermes's job). `app/src/lib/demoRegistry.ts` is a `localStorage`
+  registry the `/demo` seed flow populates for this purpose; it is explicitly local-demo-only and
+  is not part of `@aegis/sdk` itself.
+- No other deviation from the phase specification.
+
+---
+
 ## Next action
 
-**Phase 8 is complete. Hand Phase 9 (SDK, client & UI) to the implementation model when the
-maintainer explicitly authorizes it. Phase 9 has NOT been started.**
+**Phase 9 is complete. Hand Phase 10 (Security campaign) to the implementation model when the
+maintainer explicitly authorizes it. Phase 10 has NOT been started.**

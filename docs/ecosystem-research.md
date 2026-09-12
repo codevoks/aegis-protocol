@@ -730,3 +730,92 @@ Jupiter call. The optional `N-JUP-01` test uses the Swap API's `quote` → `swap
 (not Ultra, since Ultra does not expose raw instructions for CPI composition) against a Surfpool
 mainnet fork, tagged `#[ignore]`/network and excluded from `make test`, exactly as
 `phase-08-composability.md` requires.
+
+---
+
+## 17. Phase 9 re-verification (2026-09-12) — RV-7 resolved
+
+**Research date: 2026-09-12.** Closed **before any SDK code was written**, per
+`docs/phases/phase-09-sdk-ui.md`'s explicit research-gate requirement ("Close RV-7 ... Design to the
+1232-byte limit regardless"). Every finding below traces to a primary source fetched on the research
+date; nothing is assumed from training data, which predates this feature entirely.
+
+### 17.1 What SIMD-0296 is and its current activation status, by cluster
+
+**Question:** is SIMD-0296 (the 4096-byte transaction size limit, delivered via the "v1" transaction
+format defined in the companion SIMD-0385) accepted, implemented, activated, and cluster-specific —
+and is it active on the cluster Aegis actually targets?
+
+**Resolved, per cluster:**
+
+| Cluster | Status (as of 2026-09-12) |
+|---|---|
+| Mainnet-beta | **Not yet active.** Scheduled for epoch 1035, ≈2026-09-15 01:20 UTC (three days after this research date) |
+| Testnet | **Active** |
+| Devnet | **Active** |
+| Local validators (Agave CLI ≥ 4.2, **including Surfpool ≥ 1.5.0** — this repository's exact pinned version) | **Available for local testing since 2026-08-24** |
+
+**Aegis's actual target cluster is local Surfpool** (ADR-0010, zero-cost architecture) — not mainnet,
+not devnet. So although mainnet activation is still pending as of this research date, the feature is
+already available on the cluster every required Phase 9 test and demo actually runs against. This
+answers the phase spec's "cluster-specific? active on target cluster?" questions directly: **yes,
+cluster-specific, and yes, already available on Aegis's own target cluster**, several weeks ahead of
+mainnet.
+
+**Mechanism:** v1 is a distinct, opt-in transaction format (discriminator byte `0x81` at offset
+zero, a new message envelope per SIMD-0385) that raises the transaction-size ceiling from 1232 to
+4096 bytes — chosen to match a 4 KiB memory page on validator hardware. The existing `legacy` and
+`v0` formats are **unchanged and remain fully valid**; nothing about v1's activation forces or
+deprecates them. Base58-encoded transactions stay capped at 1232 bytes regardless of version
+(deliberately not raised, on deprecation grounds), so the 4096-byte ceiling is reachable only over
+base64/raw-bytes encoding.
+
+### 17.2 `@solana/kit` v8.x support
+
+**Resolved:** `@solana/kit` **8.0.0+** can build, sign, and send v1 transactions (full read **and**
+write support). This repository's actual installed version is **8.3.0** (`npm view @solana/kit
+version`, run directly on 2026-09-12 — up from the 8.2.0 recorded in §7/§12 on 2026-09-04/05), so v1
+support, if Aegis ever wanted it, is already available in the exact dependency this SDK uses. One
+caveat surfaced by community integration guidance (not from Kit's own changelog, so recorded as a
+practical note rather than an authoritative API claim): sending a v1 transaction through the
+higher-level RPC-subscribing "plugin" client's `sendTransaction` convenience path may not yet be
+wired for the new format everywhere; the manual `pipe()`-based transaction-construction path (which
+is what this SDK uses throughout — see `ix.ts`) is unaffected either way, since it constructs and
+serializes the message explicitly rather than delegating to that convenience wrapper.
+
+### 17.3 Non-negotiable design decision (independent of the above)
+
+**Aegis Phase 9 designs and tests every required instruction transaction against the classic,
+legacy 1232-byte limit, unconditionally** (`docs/phases/phase-09-sdk-ui.md`, ADR-0011, `INV-RES-06`,
+`I-TX-01`). This was true before this research and remains true after it — RV-7's resolution does not
+relax it. Reasons, restated because they are load-bearing:
+
+1. **Portability.** A wallet, RPC provider, or downstream integrator that has not yet adopted v1
+   transactions must still be able to use Aegis. Designing to 1232 bytes means Aegis works
+   everywhere; the 4096-byte ceiling becomes pure headroom, never a dependency.
+2. **No ALT dependency.** The phase spec separately forbids relying on address lookup tables to hit
+   the budget. 1232 bytes without an ALT is the actual hard constraint `I-TX-01` measures.
+3. **Mainnet timing.** Even though Surfpool already supports v1 locally, mainnet does not yet (§17.1)
+   as of this research date — designing to a mainnet-inactive limit would make the SDK's own stated
+   acceptance criteria untestable against the cluster the protocol will eventually deploy to.
+
+**Conclusion:** every transaction-size measurement in `sdk/ts/test/tx-size.test.ts` asserts `<= 1232`
+bytes using the ordinary legacy/v0 message format `@solana/kit`'s `pipe()` builder already produces
+by default — no v1-specific code was written anywhere in this SDK, and none is required for Phase 9
+acceptance.
+
+**Primary sources (fetched 2026-09-12):**
+- <https://solana.com/upgrades/larger-transaction-sizes> — activation table (mainnet epoch 1035 /
+  2026-09-15; testnet/devnet already active), v1 opt-in format, legacy/v0 unaffected, client-library
+  minimum versions (`@solana/kit` 8.0.0+, `@solana/web3.js` 3.0.0-rc.3+ full / 1.99.0+ read-only).
+- <https://solanacompass.com/news/solana-v1-transactions-now-testable-locally-as-mainnet-activation-nears>
+  — local testing available since 2026-08-24 via Agave CLI ≥4.2 and **Surfpool ≥1.5.0**.
+- <https://github.com/solana-foundation/solana-improvement-documents/blob/main/proposals/0296-larger-transactions.md>
+  — SIMD-0296 itself (the 4096-byte ceiling rationale: one 4 KiB memory page).
+- `npm view @solana/kit version` / `npm view @anchor-lang/core version`, run directly on this
+  machine on 2026-09-12: `8.3.0` / `1.2.0` respectively — confirms the installed dependency, not a
+  registry page snapshot.
+
+**Decisions affected:** none change — ADR-0011 already committed to the 1232-byte design before this
+research; this section is the closing evidence for the research gate the phase spec required, not a
+new decision.

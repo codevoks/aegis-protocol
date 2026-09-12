@@ -2,23 +2,18 @@
 
 **A risk-first, isolated-market, overcollateralized lending protocol on Solana.**
 
-> **STATUS: PHASE 8 — COMPOSABILITY AND LIQUIDATION ROUTING.**
-> Aegis is under construction. Phase 8 adds an **optional** callback to `liquidate`: after seizing
-> collateral, Aegis can CPI into a liquidator-specified, **untrusted** program so it can swap the
-> collateral and fund the repayment in the same transaction — removing the capital pre-funding a
-> liquidator otherwise needs, without weakening Phase 6's liquidation guarantees
-> ([`docs/composability.md`](docs/composability.md), [ADR-0013](docs/adr/0013-liquidation-callback-security-design.md)).
-> The callback is trusted for nothing: no signer is ever forwarded to it (`INV-AUTH-07`), every
-> post-condition is re-verified against freshly re-read state after it returns, and a per-market
-> reentrancy guard rejects a nested `liquidate` independent of the current Solana runtime's own
-> CPI-reentrancy behavior (RV-6, closed with a primary source in
-> [`docs/ecosystem-research.md`](docs/ecosystem-research.md) §16.1). Four hostile callbacks
-> (`A-CPI-01..04` — draining vault funds, reentering, exhausting compute, returning success without
-> repaying) all fail, each proven to fail **atomically** with zero partial state. Omitting the
-> callback reproduces Phase 6 behavior byte-for-byte (`I-LIQ-CB-02`). A minimal, deterministic
-> example callback (`labs/example-liquidator/`) and a TypeScript liquidator keeper
-> (`bots/liquidator/`, `@solana/kit` + `@anchor-lang/core`) both demonstrate the composed path
-> end to end, fully offline. See [`docs/project-status.md`](docs/project-status.md) for the
+> **STATUS: PHASE 9 — SDK, CLIENT & UI.**
+> Aegis is under construction. Phase 9 adds a typed TypeScript SDK (`sdk/ts/`, `@aegis/sdk`) built
+> on `@solana/kit` v8.x and `@anchor-lang/core` — never `@coral-xyz/anchor` or `@solana/web3.js` —
+> with IDL codegen deriving every discriminator, layout, and account order directly from
+> `target/idl/aegis.json`; PDA/account/read helpers; a `bigint` client-side math port validated
+> bit-for-bit against vectors the real Rust `aegis-math` emits (`I-SDK-01`); a transaction builder
+> for every user-facing instruction, each proven to fit the classic 1232-byte legacy limit with no
+> address lookup table, `liquidate`'s callback variant included (`I-TX-01`); and a Next.js app
+> (`app/`) covering the full local user journey — market view, position health, deposit/borrow/
+> repay/withdraw, and a scripted demo that warps time to show interest accruing and scripts a price
+> drop into a liquidation — against a real local Surfpool validator, entirely offline. No on-chain
+> code changed this phase. See [`docs/project-status.md`](docs/project-status.md) for the
 > authoritative state of every component.
 
 ---
@@ -96,34 +91,34 @@ Native Solana Rust and Pinocchio appear in scoped, benchmarked labs — not in p
 
 ## Quickstart
 
-**Right now (Phase 8):** on top of everything Phase 2-7 shipped, `liquidate` gained an optional
-callback (`callback_program`/`callback_collateral_account`/`callback_data`) so a liquidator can
-seize collateral, swap it via an untrusted external program, and repay — all in one transaction,
-with zero pre-funding. The callback is trusted for nothing: no signer reaches it, all state is
-re-read and every post-condition re-verified after it returns, and a per-market
-`liquidation_guard` blocks reentrancy independent of runtime behavior. Omitting the callback
-reproduces Phase 6 byte-for-byte (`I-LIQ-CB-02`); a deterministic local example callback proves the
-composed path end to end (`I-LIQ-CB-01`); four hostile callbacks all fail atomically
-(`A-CPI-01..04`). A TypeScript keeper (`bots/liquidator/`) scans, estimates health off-chain
-(advisory only — on-chain Aegis remains authoritative), and executes both the direct and callback
-liquidation paths against a local, offline validator. There is still no SDK/app yet.
+**Right now (Phase 9):** on top of everything Phase 2-8 shipped (no on-chain code changed this
+phase), `sdk/ts/` (`@aegis/sdk`) and `app/` (a Next.js application) exist. The SDK's typed
+instruction builders, PDA derivation, and account decoders are generated from the real
+Anchor-build IDL; its client-side math is validated bit-for-bit against vectors the real Rust
+`aegis-math` emits; every instruction's realistic transaction — including `liquidate` with a
+callback — fits the classic 1232-byte limit with no address lookup table. The app runs the full
+local user journey (market view, deposit, borrow, health-factor tracking, repay, withdraw) plus a
+scripted demo (warp time to show interest accruing, crash a price, liquidate) against a local
+Surfpool validator, entirely offline.
 
 ```bash
-make setup   # verify the pinned toolchain (Solana CLI, Anchor, Surfpool, Node) is installed
-make build   # anchor build (aegis) + cargo build-sbf (the two Phase 8 labs/ programs)
-make test    # cargo test --workspace — offline, no network, no secrets (the load-bearing command)
-make demo    # an under-funded liquidator (zero loan-asset balance) liquidates via the
-             # example-liquidator callback -- seize, deterministic local swap, repay, one
-             # transaction -- then, side by side, an ordinary pre-funded liquidator liquidates a
-             # second position with no callback at all, proving I-LIQ-CB-02. Offline, in-process
-             # LiteSVM (see docs/phases/phase-08-composability.md "Demo"). Earlier phase demos
-             # remain runnable directly, e.g. `cargo run -p aegis-test-kit --example phase7_demo`.
-             # The companion TypeScript keeper demo (bots/liquidator/, `npm run demo`) runs
-             # separately against a local, non-forking Surfpool validator.
+make setup        # verify the pinned toolchain (Solana CLI, Anchor, Surfpool, Node) is installed
+make build        # anchor build (aegis) + cargo build-sbf (the two Phase 8 labs/ programs)
+make test         # cargo test --workspace — offline, no network, no secrets (the load-bearing command)
+make demo         # Phase 8's Rust liquidation-callback demo (docs/phases/phase-08-composability.md)
+make sdk-install  # npm install in sdk/ts/
+make app-install  # npm install in app/ (resolves @aegis/sdk via a local file: path)
+make sdk-test     # SDK unit tests: cross-language math (I-SDK-01), PDA parity (I-SDK-03),
+                  # transaction size (I-TX-01) -- no running validator required
+make sdk-test-e2e # I-SDK-02: build/sign/send/confirm/decode for every instruction, against a
+                  # real local Surfpool validator this test starts and tears down itself
+make app          # starts a local Surfpool, deploys aegis.so, runs the Next.js dev server at
+                  # http://localhost:3000 -- Ctrl+C stops both. Visit /demo to seed a market and
+                  # run the scripted interest-accrual + liquidation demo.
 ```
 
-`make fuzz`, `make bench`, and `make app` exist as stubs that name the phase that implements them
-(10, 11, and 9 respectively) — they are not yet functional.
+`make fuzz` and `make bench` exist as stubs that name the phase that implements them (10 and 11
+respectively) — they are not yet functional.
 
 The exact install commands, pinned versions, and verification steps are recorded in
 [`docs/phases/phase-01-foundation.md`](docs/phases/phase-01-foundation.md) §3 and

@@ -1,0 +1,30 @@
+{
+  "name": "@aegis/app",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Phase 9 Next.js application for Aegis Protocol -- market view, position management, and the local Surfpool demo (deposit, borrow, warped-time interest accrual, scripted liquidation).",
+  "scripts": {
+    "dev": "next dev --webpack",
+    "build": "next build --webpack",
+    "start": "next start",
+    "lint": "next lint",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@aegis/sdk": "file:../sdk/ts",
+    "@anchor-lang/core": "1.2.0",
+    "@solana-program/compute-budget": "0.18.1",
+    "@solana-program/system": "0.14.1",
+    "@solana-program/token": "0.16.1",
+    "@solana/kit": "8.3.0",
+    "next": "16.3.5",
+    "react": "19.3.0",
+    "react-dom": "19.3.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.0",
+    "@types/react": "^19.0.0",
+    "@types/react-dom": "^19.0.0",
+    "typescript": "^5.7.0"
+  }
+}

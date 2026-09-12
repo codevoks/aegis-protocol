@@ -1,0 +1,115 @@
+{
+  "cases": [
+    {
+      "ceil": "8",
+      "ceilError": null,
+      "floor": "7",
+      "floorError": null,
+      "inputs": {
+        "a": "3",
+        "b": "5",
+        "d": "2"
+      },
+      "name": "known_vectors_3_5_2"
+    },
+    {
+      "ceil": "20",
+      "ceilError": null,
+      "floor": "20",
+      "floorError": null,
+      "inputs": {
+        "a": "10",
+        "b": "10",
+        "d": "5"
+      },
+      "name": "exact_division"
+    },
+    {
+      "ceil": "0",
+      "ceilError": null,
+      "floor": "0",
+      "floorError": null,
+      "inputs": {
+        "a": "0",
+        "b": "100",
+        "d": "7"
+      },
+      "name": "zero_numerator"
+    },
+    {
+      "ceil": "1",
+      "ceilError": null,
+      "floor": "1",
+      "floorError": null,
+      "inputs": {
+        "a": "1",
+        "b": "1",
+        "d": "1"
+      },
+      "name": "identity"
+    },
+    {
+      "ceil": "4",
+      "ceilError": null,
+      "floor": "3",
+      "floorError": null,
+      "inputs": {
+        "a": "7",
+        "b": "1",
+        "d": "2"
+      },
+      "name": "ceil_only_rounds_up_on_remainder_7_1_2"
+    },
+    {
+      "ceil": "4",
+      "ceilError": null,
+      "floor": "4",
+      "floorError": null,
+      "inputs": {
+        "a": "8",
+        "b": "1",
+        "d": "2"
+      },
+      "name": "ceil_only_rounds_up_on_remainder_8_1_2"
+    },
+    {
+      "ceil": null,
+      "ceilError": "DivisionByZero",
+      "floor": null,
+      "floorError": "DivisionByZero",
+      "inputs": {
+        "a": "1",
+        "b": "1",
+        "d": "0"
+      },
+      "name": "division_by_zero"
+    },
+    {
+      "ceil": "324000000000000000000000000",
+      "ceilError": null,
+      "floor": "324000000000000000000000000",
+      "floorError": null,
+      "inputs": {
+        "a": "18000000000000000000000000",
+        "b": "18000000000000000000",
+        "d": "1000000000000000000"
+      },
+      "name": "large_multiplication_survives_256_bit_intermediate"
+    },
+    {
+      "ceil": null,
+      "ceilError": "Overflow",
+      "floor": null,
+      "floorError": "Overflow",
+      "inputs": {
+        "a": "340282366920938463463374607431768211455",
+        "b": "340282366920938463463374607431768211455",
+        "d": "1"
+      },
+      "name": "result_overflow"
+    }
+  ],
+  "formula": "mul_div_floor / mul_div_ceil",
+  "source": "crates/aegis-math/src/fixed.rs",
+  "version": "phase-09-v1"
+}

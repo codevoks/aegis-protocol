@@ -1,0 +1,177 @@
+{
+  "cases": [
+    {
+      "address": "ADpQLw4MHN8xzXF98zdQgvvzVhEKgykxKVvC76yc4d8j",
+      "bump": 254,
+      "name": "protocol"
+    },
+    {
+      "collateralVault": {
+        "address": "4pff6YALLXNjZRxy2n6VqdvPLJ1va6P6M4p2wB3c22QF",
+        "bump": 252
+      },
+      "inputs": {
+        "collateralMint": "4vJ9JU1bJJE96FWSJKvHsmmFADCg4gpZQff4P3bkLKi",
+        "configId": 0,
+        "loanMint": "8qbHbw2BbbTHBW1sbeqakYXVKRQM8Ne7pLK7m6CVfeR"
+      },
+      "loanVault": {
+        "address": "HRb89oboKLP7RiHvqU7YbeuK6of49VSXMVvFFFbn9Xg4",
+        "bump": 255
+      },
+      "market": {
+        "address": "EnvA7AXSgZTwGYZQruFxvtkGjXhgVAVrE5L8rDLoim8A",
+        "bump": 255
+      },
+      "name": "market_a_b_config_0"
+    },
+    {
+      "collateralVault": {
+        "address": "XAVon32ZecZ89iN7FrXa4h32MFhUD12PFqczQedUGdE",
+        "bump": 255
+      },
+      "inputs": {
+        "collateralMint": "4vJ9JU1bJJE96FWSJKvHsmmFADCg4gpZQff4P3bkLKi",
+        "configId": 1,
+        "loanMint": "8qbHbw2BbbTHBW1sbeqakYXVKRQM8Ne7pLK7m6CVfeR"
+      },
+      "loanVault": {
+        "address": "8mfN2miYoVcdtcFwLC5HQ3JEWEGqdDpbQ2WG2p92J1a5",
+        "bump": 255
+      },
+      "market": {
+        "address": "65HTDniZvFpefT6sFDTM5L1aLFT89H56jEe9eYdCEBY9",
+        "bump": 254
+      },
+      "name": "market_a_b_config_1"
+    },
+    {
+      "collateralVault": {
+        "address": "8oUMEhzxcWz6sbn2goNE3UupZbp3SnbuWxC6DRnwdT49",
+        "bump": 255
+      },
+      "inputs": {
+        "collateralMint": "4vJ9JU1bJJE96FWSJKvHsmmFADCg4gpZQff4P3bkLKi",
+        "configId": 256,
+        "loanMint": "8qbHbw2BbbTHBW1sbeqakYXVKRQM8Ne7pLK7m6CVfeR"
+      },
+      "loanVault": {
+        "address": "F7epdX53TGKSPVu2AXN5QgkuuaPrUAdo3bXfm9TteLvG",
+        "bump": 255
+      },
+      "market": {
+        "address": "54pZDsfgH4F2DpYLsmwiEwwLHovYFfoZEhXz6RQGUfff",
+        "bump": 254
+      },
+      "name": "market_a_b_config_256"
+    },
+    {
+      "collateralVault": {
+        "address": "ChSFZmFDSCk5hYqsN2Zhmce6a27PEevLKt5XPSdd23e8",
+        "bump": 255
+      },
+      "inputs": {
+        "collateralMint": "4vJ9JU1bJJE96FWSJKvHsmmFADCg4gpZQff4P3bkLKi",
+        "configId": 65535,
+        "loanMint": "8qbHbw2BbbTHBW1sbeqakYXVKRQM8Ne7pLK7m6CVfeR"
+      },
+      "loanVault": {
+        "address": "GqfqcMd6josBVrLJ5yjaoQtvgafbuHRUh5qy6bbTgpRt",
+        "bump": 255
+      },
+      "market": {
+        "address": "Bna2WMcrx56nkC7mRqkUehNedYeH32HJCoiZBmcrvtra",
+        "bump": 253
+      },
+      "name": "market_a_b_config_max"
+    },
+    {
+      "collateralVault": {
+        "address": "EwaaCvnFQcC2XT6L8fMxxwHACBiXNxrS6hfHNKXWnHL3",
+        "bump": 255
+      },
+      "inputs": {
+        "collateralMint": "8qbHbw2BbbTHBW1sbeqakYXVKRQM8Ne7pLK7m6CVfeR",
+        "configId": 0,
+        "loanMint": "4vJ9JU1bJJE96FWSJKvHsmmFADCg4gpZQff4P3bkLKi"
+      },
+      "loanVault": {
+        "address": "AUcTKs8Fo5fjWMqEYnoyyVib4fY3cgHrgUmpPGyf4RQB",
+        "bump": 255
+      },
+      "market": {
+        "address": "XjrJk94UbJjCgP3k1x1NskzZcDJCMTY59dAkScHZAwR",
+        "bump": 255
+      },
+      "name": "market_b_a_config_0"
+    },
+    {
+      "collateralVault": {
+        "address": "AvYHPrEN8W52idJG8yiqZVp3QobwhTHpSsHhiknXaKC8",
+        "bump": 254
+      },
+      "inputs": {
+        "collateralMint": "11111111111111111111111111111111",
+        "configId": 42,
+        "loanMint": "JEKNVnkbo3jma5nREBBJCDoXFVeKkD56V3xKrvRmWxFG"
+      },
+      "loanVault": {
+        "address": "CZ2X5UHLkc3i9ue79dtL1xuGU95rjjBSx2tdia5gZRWf",
+        "bump": 254
+      },
+      "market": {
+        "address": "HWobwyfEr2aXCqB4Qk66PMtd9ksC5FwFsndtwgWJU72Z",
+        "bump": 253
+      },
+      "name": "market_zero_ff_config_42"
+    },
+    {
+      "inputs": {
+        "market": "EnvA7AXSgZTwGYZQruFxvtkGjXhgVAVrE5L8rDLoim8A",
+        "owner": "CVDFLCAjXhVWiPXH9nTCTpCgVzmDVoiPzNJYuccr1dqB"
+      },
+      "name": "position_owner_a",
+      "position": {
+        "address": "C4XJDzhx14ry3UhNFUyG6FjgcH8jkUfUaMoc6YjtzFkA",
+        "bump": 255
+      }
+    },
+    {
+      "inputs": {
+        "market": "EnvA7AXSgZTwGYZQruFxvtkGjXhgVAVrE5L8rDLoim8A",
+        "owner": "DdqGmK5uamYN5vmuZrzpQhKeehLdwtPLVJdhu5P2iJKC"
+      },
+      "name": "position_owner_b",
+      "position": {
+        "address": "6pmGwTwRa3GLQTExDwBK9mvnfJAPBpPaYEJn7B2WpyqB",
+        "bump": 255
+      }
+    },
+    {
+      "inputs": {
+        "market": "EnvA7AXSgZTwGYZQruFxvtkGjXhgVAVrE5L8rDLoim8A",
+        "owner": "EnTJCS15dqbDTU2XywYSMaScoPv4Py4GzExrtY9DQxoD"
+      },
+      "name": "position_fee_recipient",
+      "position": {
+        "address": "2fj9ex8PLvqNnr4pXP9fF2kGHyuH2wC7TLmwz5ZYd5UL",
+        "bump": 255
+      }
+    },
+    {
+      "inputs": {
+        "market": "EnvA7AXSgZTwGYZQruFxvtkGjXhgVAVrE5L8rDLoim8A",
+        "owner": "11111111111111111111111111111111"
+      },
+      "name": "position_all_zero_owner",
+      "position": {
+        "address": "8JHB1cuHJcQ59qtKYcyYUXZEEg6J6hbQgBNCwvniT2y8",
+        "bump": 255
+      }
+    }
+  ],
+  "formula": "protocol_pda / market_pda / position_pda / collateral_vault_pda / loan_vault_pda",
+  "programId": "DbRhjkZV1QSxMj5AvrYdgVsyEz8nKhoCLnSLGSKsqaF9",
+  "source": "crates/aegis-test-kit/src/market.rs (mirrors docs/account-model.md exactly)",
+  "version": "phase-09-v1"
+}

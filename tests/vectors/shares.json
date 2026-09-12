@@ -1,0 +1,81 @@
+{
+  "cases": [
+    {
+      "inputs": {
+        "assets": "1000000000",
+        "totalAssets": "0",
+        "totalShares": "0"
+      },
+      "name": "first_supply_empty_market",
+      "toSharesDown": "1000000000000000",
+      "toSharesUp": "1000000000000000"
+    },
+    {
+      "inputs": {
+        "assets": "5",
+        "totalAssets": "3",
+        "totalShares": "7"
+      },
+      "name": "round_fixture_assets_3_7",
+      "toSharesDown": "1250008",
+      "toSharesUp": "1250009"
+    },
+    {
+      "inputs": {
+        "assets": "6",
+        "totalAssets": "11",
+        "totalShares": "13"
+      },
+      "name": "round_fixture_assets_11_13",
+      "toSharesDown": "500006",
+      "toSharesUp": "500007"
+    },
+    {
+      "inputs": {
+        "shares": "7",
+        "totalAssets": "5",
+        "totalShares": "3"
+      },
+      "name": "round_fixture_shares_5_3",
+      "toAssetsDown": "0",
+      "toAssetsUp": "1"
+    },
+    {
+      "inputs": {
+        "shares": "6",
+        "totalAssets": "13",
+        "totalShares": "11"
+      },
+      "name": "round_fixture_shares_13_11",
+      "toAssetsDown": "0",
+      "toAssetsUp": "1"
+    },
+    {
+      "inputs": {
+        "assets": "1000000000",
+        "totalAssets": "1000000001",
+        "totalShares": "1000000000000000"
+      },
+      "name": "ratio_drift_later_depositor",
+      "toSharesDown": "999999999000000",
+      "toSharesUp": "999999999000001"
+    },
+    {
+      "inputs": {
+        "shares": "18000000000000000000000000",
+        "totalAssets": "18000000000000000000",
+        "totalShares": "18000000000000000000000000"
+      },
+      "name": "maximum_legal_share_asset_state",
+      "toAssetsDown": "18000000000000000000",
+      "toAssetsUp": "18000000000000000000"
+    }
+  ],
+  "constants": {
+    "virtualAssets": "1",
+    "virtualShares": "1000000"
+  },
+  "formula": "to_shares_down / to_shares_up / to_assets_down / to_assets_up",
+  "source": "crates/aegis-math/src/shares.rs",
+  "version": "phase-09-v1"
+}

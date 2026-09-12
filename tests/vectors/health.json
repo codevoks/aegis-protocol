@@ -1,0 +1,128 @@
+{
+  "bandCases": [
+    {
+      "error": null,
+      "hi": "150300000000000000000",
+      "inputs": {
+        "conf": "30000000",
+        "expo": -8,
+        "maxConfBps": 100,
+        "price": 15000000000
+      },
+      "lo": "149700000000000000000",
+      "name": "sol_150_conf_030"
+    },
+    {
+      "error": null,
+      "hi": "1000200000000000000",
+      "inputs": {
+        "conf": "20000",
+        "expo": -8,
+        "maxConfBps": 50,
+        "price": 100000000
+      },
+      "lo": "999800000000000000",
+      "name": "usdc_1_conf_tiny"
+    },
+    {
+      "error": null,
+      "hi": "10100000000000000000000",
+      "inputs": {
+        "conf": "100",
+        "expo": 0,
+        "maxConfBps": 100,
+        "price": 10000
+      },
+      "lo": "9900000000000000000000",
+      "name": "confidence_boundary_pass"
+    },
+    {
+      "error": "ConfidenceTooWide",
+      "hi": null,
+      "inputs": {
+        "conf": "101",
+        "expo": 0,
+        "maxConfBps": 100,
+        "price": 10000
+      },
+      "lo": null,
+      "name": "confidence_boundary_fail"
+    },
+    {
+      "error": "PriceNotPositive",
+      "hi": null,
+      "inputs": {
+        "conf": "0",
+        "expo": -8,
+        "maxConfBps": 100,
+        "price": 0
+      },
+      "lo": null,
+      "name": "zero_price_rejected"
+    }
+  ],
+  "formula": "scale_to_wad_* / conservative_price_band / collateral_value / debt_value / health_factor / is_within_max_ltv",
+  "scaleCases": [
+    {
+      "ceil": "150000000000000000000",
+      "floor": "150000000000000000000",
+      "inputs": {
+        "expo": -8,
+        "raw": "15000000000"
+      },
+      "name": "typical_neg8"
+    },
+    {
+      "ceil": "1000000000000000000000000",
+      "floor": "1000000000000000000000000",
+      "inputs": {
+        "expo": 0,
+        "raw": "1000000"
+      },
+      "name": "zero_expo"
+    },
+    {
+      "ceil": "1000000",
+      "floor": "1000000",
+      "inputs": {
+        "expo": -12,
+        "raw": "1"
+      },
+      "name": "deep_negative_expo"
+    }
+  ],
+  "source": "crates/aegis-math/src/health.rs",
+  "version": "phase-09-v1",
+  "workedExamples": {
+    "crashed": {
+      "collateralValue": "948000000000000000000",
+      "debtValue": "900180000000000000000",
+      "healthFactor": "842498167033260014",
+      "inputs": {
+        "collateralAmount": "10000000000",
+        "collateralDecimals": 9,
+        "debtAssets": "900000000",
+        "liqThreshold": "800000000000000000",
+        "loanDecimals": 6,
+        "priceCLo": "94800000000000000000",
+        "priceLHi": "1000200000000000000"
+      }
+    },
+    "healthy": {
+      "collateralValue": "1497000000000000000000",
+      "debtValue": "900180000000000000000",
+      "healthFactor": "1330400586549356795",
+      "inputs": {
+        "collateralAmount": "10000000000",
+        "collateralDecimals": 9,
+        "debtAssets": "900000000",
+        "liqThreshold": "800000000000000000",
+        "loanDecimals": 6,
+        "maxLtv": "750000000000000000",
+        "priceCLo": "149700000000000000000",
+        "priceLHi": "1000200000000000000"
+      },
+      "isWithinMaxLtv": true
+    }
+  }
+}

@@ -1,0 +1,105 @@
+{
+  "formula": "max_repay / is_liquidatable / compute_liquidation_by_repay / compute_liquidation_by_seize",
+  "healthyPositionRejected": {
+    "hf": "1000000000000000000",
+    "outcome": {
+      "error": "RepayExceedsMaxRepay"
+    }
+  },
+  "isLiquidatableCases": [
+    {
+      "hf": "1000000000000000000",
+      "isLiquidatable": false,
+      "name": "equal_to_wad"
+    },
+    {
+      "hf": "999999999999999999",
+      "isLiquidatable": true,
+      "name": "one_below_wad"
+    },
+    {
+      "hf": "1000000000000000001",
+      "isLiquidatable": false,
+      "name": "one_above_wad"
+    }
+  ],
+  "maxRepayCases": [
+    {
+      "inputs": {
+        "debtAssets": "900000000",
+        "hf": "842498167033260014"
+      },
+      "maxRepay": "900000000",
+      "name": "full_liquidation_band"
+    },
+    {
+      "inputs": {
+        "closeFactor": "500000000000000000",
+        "debtAssets": "100000000",
+        "hf": "960000000000000000",
+        "minDebt": "10000000"
+      },
+      "maxRepay": "50000000",
+      "name": "close_factor_band"
+    },
+    {
+      "inputs": {
+        "closeFactor": "500000000000000000",
+        "debtAssets": "100000000",
+        "hf": "960000000000000000",
+        "minDebt": "60000000"
+      },
+      "maxRepay": "100000000",
+      "name": "dust_rule_forces_full"
+    }
+  ],
+  "params": {
+    "closeFactor": "500000000000000000",
+    "collateralDecimals": 9,
+    "fullLiqHf": "950000000000000000",
+    "liqBonus": "50000000000000000",
+    "liqProtocolFee": "100000000000000000",
+    "loanDecimals": 6,
+    "minDebt": "10000000",
+    "priceCLo": "94800000000000000000",
+    "priceLHi": "1000200000000000000"
+  },
+  "source": "crates/aegis-math/src/liquidation.rs",
+  "version": "phase-09-v1",
+  "worked": {
+    "byRepayClamped": {
+      "baseSeize": "8571428573",
+      "bonusAmount": "428571427",
+      "clamped": true,
+      "error": null,
+      "protocolCut": "42857142",
+      "repayAssets": "812408947",
+      "toLiquidator": "8957142858",
+      "totalSeize": "9000000000"
+    },
+    "byRepaySufficient": {
+      "baseSeize": "9495569620",
+      "bonusAmount": "474778481",
+      "clamped": false,
+      "error": null,
+      "protocolCut": "47477848",
+      "repayAssets": "900000000",
+      "toLiquidator": "9922870253",
+      "totalSeize": "9970348101"
+    },
+    "bySeizeMatchesByRepay": {
+      "baseSeize": "9495569620",
+      "bonusAmount": "474778481",
+      "clamped": false,
+      "error": null,
+      "protocolCut": "47477848",
+      "repayAssets": "900000000",
+      "toLiquidator": "9922870253",
+      "totalSeize": "9970348101"
+    },
+    "collateralAmountInsufficient": "9000000000",
+    "collateralAmountSufficient": "10000000000",
+    "debtAssets": "900000000",
+    "hf": "842498167033260014"
+  }
+}

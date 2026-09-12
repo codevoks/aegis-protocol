@@ -1,0 +1,149 @@
+{
+  "constants": {
+    "secondsPerYear": "31536000",
+    "wad": "1000000000000000000"
+  },
+  "formula": "utilization / borrow_rate / taylor3 / taylor_x",
+  "rateCases": [
+    {
+      "inputs": {
+        "baseRatePs": "0",
+        "maxRatePs": "317097919837",
+        "slope1Ps": "1268391679",
+        "slope2Ps": "31709791983",
+        "u": "0",
+        "uKink": "800000000000000000"
+      },
+      "name": "zero",
+      "rate": "0"
+    },
+    {
+      "inputs": {
+        "baseRatePs": "0",
+        "maxRatePs": "317097919837",
+        "slope1Ps": "1268391679",
+        "slope2Ps": "31709791983",
+        "u": "800000000000000000",
+        "uKink": "800000000000000000"
+      },
+      "name": "at_kink",
+      "rate": "1268391679"
+    },
+    {
+      "inputs": {
+        "baseRatePs": "0",
+        "maxRatePs": "317097919837",
+        "slope1Ps": "1268391679",
+        "slope2Ps": "31709791983",
+        "u": "900000000000000000",
+        "uKink": "800000000000000000"
+      },
+      "name": "ninety_pct",
+      "rate": "17123287670"
+    },
+    {
+      "inputs": {
+        "baseRatePs": "0",
+        "maxRatePs": "317097919837",
+        "slope1Ps": "1268391679",
+        "slope2Ps": "31709791983",
+        "u": "1000000000000000000",
+        "uKink": "800000000000000000"
+      },
+      "name": "full",
+      "rate": "32978183662"
+    },
+    {
+      "inputs": {
+        "baseRatePs": "0",
+        "maxRatePs": "317097919837",
+        "slope1Ps": "317097919837",
+        "slope2Ps": "317097919837",
+        "u": "1000000000000000000",
+        "uKink": "800000000000000000"
+      },
+      "name": "capped_by_max_rate",
+      "rate": "317097919837"
+    }
+  ],
+  "source": "crates/aegis-math/src/irm.rs",
+  "taylorCases": [
+    {
+      "growth": "0",
+      "inputs": {
+        "dtSeconds": "0",
+        "ratePerSecondWad": "317097919837"
+      },
+      "name": "zero_dt",
+      "x": "0"
+    },
+    {
+      "growth": "1480546983577839",
+      "inputs": {
+        "dtSeconds": "86400",
+        "ratePerSecondWad": "17123287670"
+      },
+      "name": "worked_example_r_dt",
+      "x": "1479452054688000"
+    },
+    {
+      "growth": "1666666666666666666",
+      "inputs": {
+        "dtSeconds": "1",
+        "ratePerSecondWad": "1000000000000000000"
+      },
+      "name": "one_wad",
+      "x": "1000000000000000000"
+    }
+  ],
+  "utilizationCases": [
+    {
+      "inputs": {
+        "totalBorrowAssets": "0",
+        "totalSupplyAssets": "0"
+      },
+      "name": "u_0_0",
+      "utilization": "0"
+    },
+    {
+      "inputs": {
+        "totalBorrowAssets": "500",
+        "totalSupplyAssets": "0"
+      },
+      "name": "u_500_0",
+      "utilization": "0"
+    },
+    {
+      "inputs": {
+        "totalBorrowAssets": "900000000",
+        "totalSupplyAssets": "1000000000"
+      },
+      "name": "u_900000000_1000000000",
+      "utilization": "900000000000000000"
+    },
+    {
+      "inputs": {
+        "totalBorrowAssets": "1000000000",
+        "totalSupplyAssets": "1000000000"
+      },
+      "name": "u_1000000000_1000000000",
+      "utilization": "1000000000000000000"
+    }
+  ],
+  "version": "phase-09-v1",
+  "workedAccrual": {
+    "feeAmount": "133249",
+    "growth": "1480546983577839",
+    "inputs": {
+      "dtSeconds": "86400",
+      "feeWad": "100000000000000000",
+      "totalBorrowAssets": "900000000",
+      "totalSupplyAssets": "1000000000"
+    },
+    "interest": "1332492",
+    "name": "worked_accrual_ninety_pct_one_day",
+    "ratePerSecondWad": "17123287670",
+    "utilization": "900000000000000000",
+    "x": "1479452054688000"
+  }
+}

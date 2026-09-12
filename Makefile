@@ -1,4 +1,6 @@
-.PHONY: setup build test fmt lint clean bench fuzz demo app
+.PHONY: setup build test fmt lint clean bench fuzz demo app \
+        sdk-install app-install codegen codegen-check vectors vectors-check \
+        sdk-test sdk-test-e2e app-build app-typecheck
 
 ## Verify and print the exact toolchain versions this repository was built against.
 setup:
@@ -83,6 +85,57 @@ bench:
 demo: build
 	cargo run -p aegis-test-kit --example phase8_demo
 
-## UI against local Surfpool — Phase 9.
+## --- Phase 9: SDK, client & UI ---
+
+## Installs sdk/ts's npm dependencies.
+sdk-install:
+	cd sdk/ts && npm install
+
+## Installs app/'s npm dependencies (which resolves @aegis/sdk via a local file: path to sdk/ts).
+app-install:
+	cd app && npm install
+
+## Regenerates sdk/ts/src/generated/ from the current target/idl/aegis.json (run `make build`
+## first). Deterministic: given an unchanged IDL, output is byte-identical.
+codegen:
+	cd sdk/ts && npm run codegen
+
+## CI stale-generated-code guard (docs/phases/phase-09-sdk-ui.md item 3): regenerates into a temp
+## dir and diffs against the committed sdk/ts/src/generated/. Never rewrites the committed files.
+codegen-check:
+	cd sdk/ts && npm run codegen:check
+
+## Regenerates tests/vectors/*.json from the real aegis-math implementation (I-SDK-01).
+vectors:
+	cargo run -p aegis-test-kit --example phase9_vectors_dump -- tests/vectors
+
+## CI stale-vector guard: regenerates into a temp dir and diffs against the committed
+## tests/vectors/. Never rewrites the committed files on a pure check.
+vectors-check:
+	./scripts/check-vectors.sh
+
+## SDK unit tests: cross-language math vectors (I-SDK-01), PDA parity (I-SDK-03), and transaction
+## size (I-TX-01 / INV-RES-06). No network, no running validator required.
+sdk-test:
+	cd sdk/ts && npm test
+
+## SDK end-to-end test (I-SDK-02): build -> sign -> send -> confirm -> decode for every
+## instruction, against a real local Surfpool validator this test starts and deploys to itself.
+## Requires `make build` first.
+sdk-test-e2e:
+	cd sdk/ts && npm run test:e2e
+
+## Typechecks the Next.js app (does not require a running validator).
+app-typecheck:
+	cd app && npm run typecheck
+
+## Production build of the Next.js app (does not require a running validator).
+app-build:
+	cd app && npm run build
+
+## Local Surfpool + the aegis program deployed to it + the Next.js dev server, all in one command
+## (docs/phases/phase-09-sdk-ui.md items 25-27, 46: "make app works on a clean clone"). Ctrl+C
+## stops the dev server and the background validator together. Prerequisites: `make build`,
+## `make sdk-install`, `make app-install`.
 app:
-	@echo "not implemented until Phase 9 (SDK, client & UI)"
+	./scripts/run-app.sh

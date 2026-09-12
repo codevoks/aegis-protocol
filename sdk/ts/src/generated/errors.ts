@@ -1,0 +1,72 @@
+// GENERATED FILE -- do not edit by hand.
+// Produced by sdk/ts/scripts/codegen.mjs from target/idl/aegis.json.
+// Re-run `npm run codegen` (sdk/ts/) after `anchor build` changes the IDL; `npm run codegen:check` detects a stale commit.
+
+
+export interface AegisErrorDef {
+  code: number;
+  name: string;
+  msg: string;
+}
+
+export const AEGIS_ERRORS: Record<number, AegisErrorDef> = {
+  6000: { code: 6000, name: "NotProtocolAdmin", msg: "Signer does not match protocol.admin" },
+  6001: { code: 6001, name: "NotPositionOwner", msg: "Signer does not match position.owner" },
+  6002: { code: 6002, name: "PositionMarketMismatch", msg: "Position does not belong to the supplied market" },
+  6020: { code: 6020, name: "ArithmeticOverflow", msg: "Arithmetic overflow" },
+  6021: { code: 6021, name: "DivisionByZero", msg: "Division by zero" },
+  6040: { code: 6040, name: "OracleUnsupportedKind", msg: "market.oracle_kind is not a recognized oracle kind" },
+  6041: { code: 6041, name: "OracleAccountOwnerMismatch", msg: "O-1: price-update account is not owned by the Pyth receiver program" },
+  6042: { code: 6042, name: "OracleAccountInvalidData", msg: "O-2: price-update account failed to deserialize as a PriceUpdateV2" },
+  6043: { code: 6043, name: "OracleFeedMismatch", msg: "O-3: price-update account's feed_id does not match the market's configured feed" },
+  6044: { code: 6044, name: "OracleVerificationLevelNotFull", msg: "O-4: price update is not fully verified (VerificationLevel::Full required)" },
+  6045: { code: 6045, name: "OraclePriceStale", msg: "O-5: price update is older than market.max_price_age_secs" },
+  6046: { code: 6046, name: "OraclePriceInFuture", msg: "O-6: price update's publish_time is unacceptably far in the future" },
+  6047: { code: 6047, name: "OracleDuplicatePriceAccounts", msg: "O-11: the collateral and loan price-update accounts must be distinct" },
+  6048: { code: 6048, name: "OraclePriceNotPositive", msg: "O-7: oracle price is zero or negative" },
+  6049: { code: 6049, name: "OracleConfidenceTooWide", msg: "O-8: oracle confidence interval exceeds market.max_conf_bps" },
+  6050: { code: 6050, name: "OraclePriceOutOfBounds", msg: "O-9: confidence-adjusted price falls outside [MIN_PRICE_WAD, MAX_PRICE_WAD]" },
+  6051: { code: 6051, name: "ExceedsMaxLtv", msg: "debt_value exceeds collateral_value * max_ltv / WAD after this operation" },
+  6060: { code: 6060, name: "DebtBelowMinimum", msg: "Position debt after this operation must be exactly zero or at least market.min_debt" },
+  6080: { code: 6080, name: "LiquidationBonusExceedsThresholdBound", msg: "liq_threshold * (WAD + liq_bonus) / WAD must be strictly less than WAD (INV-LIQ-06)" },
+  6081: { code: 6081, name: "NotLiquidatable", msg: "INV-LIQ-01/INV-SOLV-02: position health factor is not strictly below WAD (HF == WAD is NOT liquidatable)" },
+  6082: { code: 6082, name: "RepayExceedsMaxRepay", msg: "repay_assets exceeds max_repay (close factor / dust rule / full-liquidation bound)" },
+  6083: { code: 6083, name: "SeizeExceedsCollateral", msg: "seize_collateral exceeds position.collateral_amount" },
+  6084: { code: 6084, name: "NothingToLiquidate", msg: "liquidate requires collateral_amount > 0 and borrow_shares > 0" },
+  6085: { code: 6085, name: "BadDebtRequiresZeroCollateral", msg: "absorb_bad_debt requires position.collateral_amount to be exactly zero" },
+  6086: { code: 6086, name: "BadDebtRequiresOutstandingDebt", msg: "absorb_bad_debt requires position.borrow_shares > 0" },
+  6087: { code: 6087, name: "InsufficientCollateralFees", msg: "amount exceeds market.collateral_fee_accrued" },
+  6100: { code: 6100, name: "TokenProgramMintMismatch", msg: "Mint account owner does not match the supplied token program" },
+  6101: { code: 6101, name: "UnsupportedTokenExtension", msg: "Token-2022 extension is not on the positive allowlist" },
+  6102: { code: 6102, name: "TransferFeeNotAllowedForLoanAsset", msg: "A transfer-fee mint cannot be used as the loan asset" },
+  6103: { code: 6103, name: "FreezeAuthorityNotAcknowledged", msg: "Mint has a freeze authority that was not acknowledged" },
+  6104: { code: 6104, name: "InvalidMintAccountData", msg: "Mint account data could not be parsed as a Token or Token-2022 mint" },
+  6105: { code: 6105, name: "VaultMintMismatch", msg: "Mint account does not match the market's pinned mint for this asset" },
+  6106: { code: 6106, name: "VaultMismatch", msg: "Token account does not match the market's canonical vault for this asset" },
+  6107: { code: 6107, name: "TokenProgramMismatch", msg: "Token program does not match the market's pinned token program for this asset" },
+  6108: { code: 6108, name: "VaultAccountingError", msg: "Measured post-CPI vault balance decreased instead of increasing" },
+  6109: { code: 6109, name: "ZeroAmount", msg: "amount must be greater than zero" },
+  6110: { code: 6110, name: "InsufficientCollateral", msg: "amount exceeds position.collateral_amount" },
+  6111: { code: 6111, name: "InconsistentInput", msg: "exactly one of assets/shares must be nonzero, not both" },
+  6112: { code: 6112, name: "InsufficientLiquidity", msg: "requested assets exceed the market's free liquidity (total_supply_assets - total_borrow_assets)" },
+  6113: { code: 6113, name: "InsufficientShares", msg: "requested shares exceed the position's available share balance" },
+  6120: { code: 6120, name: "DefaultPubkeyNotAllowed", msg: "guardian and fee_recipient must not be the default Pubkey" },
+  6121: { code: 6121, name: "SameCollateralAndLoanMint", msg: "collateral_mint and loan_mint must differ" },
+  6122: { code: 6122, name: "InvalidMaxLtvOrThreshold", msg: "require 0 < max_ltv < liq_threshold < WAD" },
+  6123: { code: 6123, name: "InvalidLiqBonus", msg: "liq_bonus must be in [0, MAX_LIQ_BONUS]" },
+  6124: { code: 6124, name: "InvalidCloseFactor", msg: "close_factor must be in [MIN_CLOSE_FACTOR, WAD]" },
+  6125: { code: 6125, name: "InvalidFullLiqHf", msg: "full_liq_hf must be in (0, WAD]" },
+  6126: { code: 6126, name: "InvalidLiqProtocolFee", msg: "liq_protocol_fee must be in [0, MAX_LIQ_PROTOCOL_FEE]" },
+  6127: { code: 6127, name: "InvalidFee", msg: "fee must be in [0, MAX_FEE]" },
+  6128: { code: 6128, name: "InvalidMinDebt", msg: "min_debt must be greater than zero" },
+  6129: { code: 6129, name: "InvalidIrmParams", msg: "IRM parameters violate 0 < u_kink < WAD, max_rate_ps > 0, or rate <= max_rate_ps" },
+  6130: { code: 6130, name: "InvalidMaxPriceAge", msg: "max_price_age_secs must be in [1, 3600]" },
+  6131: { code: 6131, name: "InvalidMaxConfBps", msg: "max_conf_bps must be in [1, 2000]" },
+  6140: { code: 6140, name: "InvalidPositionOwner", msg: "position owner must not be the default Pubkey" },
+  6141: { code: 6141, name: "PositionNotEmpty", msg: "close_position requires supply_shares, borrow_shares and collateral_amount to be exactly zero" },
+  6160: { code: 6160, name: "LiquidationCallbackReentrancy", msg: "A liquidation callback is already in flight on this market (A-CPI-02, protocol-level guard)" },
+  6161: { code: 6161, name: "LiquidationCallbackNotExecutable", msg: "callback_program was supplied but is not marked executable" },
+  6162: { code: 6162, name: "LiquidationCallbackAccountMismatch", msg: "callback_collateral_account is required exactly when callback_program is supplied, and its mint must match market.collateral_mint" },
+  6163: { code: 6163, name: "CallbackAccountNotPermitted", msg: "a remaining account supplied to the liquidation callback aliases a protected Aegis account (INV-AUTH-07)" },
+  6164: { code: 6164, name: "LiquidationCallbackRepaymentShortfall", msg: "measured post-callback loan_vault delta is less than the required repayment (A-CPI-04)" },
+};

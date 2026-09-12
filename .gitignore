@@ -60,6 +60,9 @@ benchmarks/tmp/
 # --- Phase 8 bot: regenerated (non-deterministic publish_time) by `npm run fixtures` ---
 bots/liquidator/fixtures/*.json
 
+# --- Phase 9 SDK e2e/app demo: regenerated (non-deterministic publish_time) price fixtures ---
+sdk/ts/fixtures/*.json
+
 # --- Coverage / fuzz artifacts ---
 coverage/
 fuzz/corpus/

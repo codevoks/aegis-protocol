@@ -1,0 +1,3340 @@
+{
+  "address": "DbRhjkZV1QSxMj5AvrYdgVsyEz8nKhoCLnSLGSKsqaF9",
+  "metadata": {
+    "name": "aegis",
+    "version": "0.1.0",
+    "spec": "0.1.0",
+    "description": "Aegis Protocol on-chain program"
+  },
+  "instructions": [
+    {
+      "name": "absorb_bad_debt",
+      "docs": [
+        "Recognizes bad debt on a fully-seized (`collateral_amount == 0`) position: protocol fee",
+        "shares absorb the loss first, then the residual is socialized across lenders",
+        "(`instruction-catalogue.md` §18, `economic-model.md` §8.2). Permissionless, no oracle,",
+        "unpausable, moves no tokens."
+      ],
+      "discriminator": [
+        49,
+        38,
+        219,
+        23,
+        214,
+        120,
+        39,
+        143
+      ],
+      "accounts": [
+        {
+          "name": "market",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  109,
+                  97,
+                  114,
+                  107,
+                  101,
+                  116
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "market.collateral_mint",
+                "account": "Market"
+              },
+              {
+                "kind": "account",
+                "path": "market.loan_mint",
+                "account": "Market"
+              },
+              {
+                "kind": "account",
+                "path": "market.config_id",
+                "account": "Market"
+              }
+            ]
+          },
+          "relations": [
+            "position",
+            "fee_position"
+          ]
+        },
+        {
+          "name": "position",
+          "writable": true
+        },
+        {
+          "name": "fee_position",
+          "docs": [
+            "Mandatory, PDA-constrained -- never a caller-supplied account (T-11)."
+          ],
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  112,
+                  111,
+                  115,
+                  105,
+                  116,
+                  105,
+                  111,
+                  110
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "market"
+              },
+              {
+                "kind": "account",
+                "path": "market.fee_recipient",
+                "account": "Market"
+              }
+            ]
+          }
+        }
+      ],
+      "args": []
+    },
+    {
+      "name": "accrue_interest",
+      "docs": [
+        "Standalone, permissionless interest accrual (`instruction-catalogue.md` §16). `dt == 0` is",
+        "a successful no-op."
+      ],
+      "discriminator": [
+        47,
+        40,
+        115,
+        198,
+        91,
+        12,
+        222,
+        49
+      ],
+      "accounts": [
+        {
+          "name": "market",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  109,
+                  97,
+                  114,
+                  107,
+                  101,
+                  116
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "market.collateral_mint",
+                "account": "Market"
+              },
+              {
+                "kind": "account",
+                "path": "market.loan_mint",
+                "account": "Market"
+              },
+              {
+                "kind": "account",
+                "path": "market.config_id",
+                "account": "Market"
+              }
+            ]
+          },
+          "relations": [
+            "fee_position"
+          ]
+        },
+        {
+          "name": "fee_position",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  112,
+                  111,
+                  115,
+                  105,
+                  116,
+                  105,
+                  111,
+                  110
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "market"
+              },
+              {
+                "kind": "account",
+                "path": "market.fee_recipient",
+                "account": "Market"
+              }
+            ]
+          }
+        }
+      ],
+      "args": []
+    },
+    {
+      "name": "borrow",
+      "docs": [
+        "Borrows the loan asset against posted collateral, oracle-validated and LTV-checked",
+        "(`instruction-catalogue.md` §14, `docs/oracle-design.md`). Fails closed on any oracle",
+        "validation failure."
+      ],
+      "discriminator": [
+        228,
+        253,
+        131,
+        202,
+        207,
+        116,
+        89,
+        18
+      ],
+      "accounts": [
+        {
+          "name": "owner",
+          "signer": true,
+          "relations": [
+            "position"
+          ]
+        },
+        {
+          "name": "market",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  109,
+                  97,
+                  114,
+                  107,
+                  101,
+                  116
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "market.collateral_mint",
+                "account": "Market"
+              },
+              {
+                "kind": "account",
+                "path": "market.loan_mint",
+                "account": "Market"
+              },
+              {
+                "kind": "account",
+                "path": "market.config_id",
+                "account": "Market"
+              }
+            ]
+          },
+          "relations": [
+            "position",
+            "fee_position"
+          ]
+        },
+        {
+          "name": "position",
+          "writable": true
+        },
+        {
+          "name": "fee_position",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  112,
+                  111,
+                  115,
+                  105,
+                  116,
+                  105,
+                  111,
+                  110
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "market"
+              },
+              {
+                "kind": "account",
+                "path": "market.fee_recipient",
+                "account": "Market"
+              }
+            ]
+          }
+        },
+        {
+          "name": "loan_vault",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  108,
+                  118,
+                  97,
+                  117,
+                  108,
+                  116
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "market"
+              }
+            ]
+          }
+        },
+        {
+          "name": "owner_loan_ata",
+          "writable": true
+        },
+        {
+          "name": "loan_mint"
+        },
+        {
+          "name": "loan_token_program"
+        },
+        {
+          "name": "collateral_price_update",
+          "docs": [
+            "`Account<'info, PriceUpdateV2>` because `oracle::PriceSource::read_price`'s frozen",
+            "signature (`oracle-design.md` §1) takes a raw `AccountInfo`, so a v2 non-Pyth implementer",
+            "would not need to depend on Pyth's account type at all."
+          ]
+        },
+        {
+          "name": "loan_price_update"
+        }
+      ],
+      "args": [
+        {
+          "name": "assets",
+          "type": "u64"
+        },
+        {
+          "name": "shares",
+          "type": "u128"
+        }
+      ]
+    },
+    {
+      "name": "close_position",
+      "docs": [
+        "Closes an empty `Position` and returns its rent to `owner` (`instruction-catalogue.md` §20)."
+      ],
+      "discriminator": [
+        123,
+        134,
+        81,
+        0,
+        49,
+        68,
+        98,
+        98
+      ],
+      "accounts": [
+        {
+          "name": "owner",
+          "writable": true,
+          "signer": true,
+          "relations": [
+            "position"
+          ]
+        },
+        {
+          "name": "market",
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  109,
+                  97,
+                  114,
+                  107,
+                  101,
+                  116
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "market.collateral_mint",
+                "account": "Market"
+              },
+              {
+                "kind": "account",
+                "path": "market.loan_mint",
+                "account": "Market"
+              },
+              {
+                "kind": "account",
+                "path": "market.config_id",
+                "account": "Market"
+              }
+            ]
+          },
+          "relations": [
+            "position"
+          ]
+        },
+        {
+          "name": "position",
+          "writable": true
+        }
+      ],
+      "args": []
+    },
+    {
+      "name": "create_market",
+      "docs": [
+        "Creates one isolated lending market, its two custody vaults, and the mandatory protocol",
+        "fee position (`instruction-catalogue.md` §6)."
+      ],
+      "discriminator": [
+        103,
+        226,
+        97,
+        235,
+        200,
+        188,
+        251,
+        254
+      ],
+      "accounts": [
+        {
+          "name": "admin",
+          "writable": true,
+          "signer": true,
+          "relations": [
+            "protocol"
+          ]
+        },
+        {
+          "name": "protocol",
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  112,
+                  114,
+                  111,
+                  116,
+                  111,
+                  99,
+                  111,
+                  108
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "name": "collateral_mint"
+        },
+        {
+          "name": "loan_mint"
+        },
+        {
+          "name": "collateral_token_program"
+        },
+        {
+          "name": "loan_token_program"
+        },
+        {
+          "name": "market",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  109,
+                  97,
+                  114,
+                  107,
+                  101,
+                  116
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "collateral_mint"
+              },
+              {
+                "kind": "account",
+                "path": "loan_mint"
+              },
+              {
+                "kind": "arg",
+                "path": "args.config_id"
+              }
+            ]
+          }
+        },
+        {
+          "name": "collateral_vault",
+          "docs": [
+            "`init` sugar — see that module's doc comment for why. The PDA-and-bump constraint here",
+            "still guarantees this is the one, canonical collateral-vault address for this market."
+          ],
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  99,
+                  118,
+                  97,
+                  117,
+                  108,
+                  116
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "market"
+              }
+            ]
+          }
+        },
+        {
+          "name": "loan_vault",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  108,
+                  118,
+                  97,
+                  117,
+                  108,
+                  116
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "market"
+              }
+            ]
+          }
+        },
+        {
+          "name": "fee_position",
+          "docs": [
+            "The protocol's own fee position, mandatory so `absorb_bad_debt` (Phase 6) can always",
+            "require it — this removes an entire \"what if it doesn't exist\" branch from the most",
+            "delicate instruction in the protocol (account-model.md §9)."
+          ],
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  112,
+                  111,
+                  115,
+                  105,
+                  116,
+                  105,
+                  111,
+                  110
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "market"
+              },
+              {
+                "kind": "account",
+                "path": "protocol.fee_recipient",
+                "account": "Protocol"
+              }
+            ]
+          }
+        },
+        {
+          "name": "system_program",
+          "address": "11111111111111111111111111111111"
+        }
+      ],
+      "args": [
+        {
+          "name": "args",
+          "type": {
+            "defined": {
+              "name": "CreateMarketArgs"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "deposit_collateral",
+      "docs": [
+        "Deposits collateral into a position by measured delta; no oracle, no pause check, and",
+        "`Market` is never written (`instruction-catalogue.md` §10)."
+      ],
+      "discriminator": [
+        156,
+        131,
+        142,
+        116,
+        146,
+        247,
+        162,
+        120
+      ],
+      "accounts": [
+        {
+          "name": "depositor",
+          "docs": [
+            "Need not be the position owner (`account-model.md` §5.1) — depositing into someone else's",
+            "position is strictly risk-reducing for them and requires no permission. This account is",
+            "the SPL/Token-2022 transfer *authority* for `depositor_collateral_ata`, which the token",
+            "program itself verifies during the CPI below."
+          ],
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "market",
+          "docs": [
+            "Read-only (see module doc). Not boxed like `create_market`'s copy needs to be: this",
+            "instruction has far fewer accounts in its `Accounts` struct."
+          ],
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  109,
+                  97,
+                  114,
+                  107,
+                  101,
+                  116
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "market.collateral_mint",
+                "account": "Market"
+              },
+              {
+                "kind": "account",
+                "path": "market.loan_mint",
+                "account": "Market"
+              },
+              {
+                "kind": "account",
+                "path": "market.config_id",
+                "account": "Market"
+              }
+            ]
+          },
+          "relations": [
+            "position"
+          ]
+        },
+        {
+          "name": "position",
+          "writable": true
+        },
+        {
+          "name": "collateral_vault",
+          "docs": [
+            "Double-validated (`account-model.md` §1 principle 5): the canonical PDA derivation",
+            "(`seeds`/`bump`) and the stored pubkey on `Market` (`address`) must both agree (T-03)."
+          ],
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  99,
+                  118,
+                  97,
+                  117,
+                  108,
+                  116
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "market"
+              }
+            ]
+          }
+        },
+        {
+          "name": "depositor_collateral_ata",
+          "writable": true
+        },
+        {
+          "name": "collateral_mint"
+        },
+        {
+          "name": "collateral_token_program"
+        }
+      ],
+      "args": [
+        {
+          "name": "amount",
+          "type": "u64"
+        }
+      ]
+    },
+    {
+      "name": "init_position",
+      "docs": [
+        "Creates an empty `Position` for `(market, owner)` (`instruction-catalogue.md` §9)."
+      ],
+      "discriminator": [
+        197,
+        20,
+        10,
+        1,
+        97,
+        160,
+        177,
+        91
+      ],
+      "accounts": [
+        {
+          "name": "payer",
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "market",
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  109,
+                  97,
+                  114,
+                  107,
+                  101,
+                  116
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "market.collateral_mint",
+                "account": "Market"
+              },
+              {
+                "kind": "account",
+                "path": "market.loan_mint",
+                "account": "Market"
+              },
+              {
+                "kind": "account",
+                "path": "market.config_id",
+                "account": "Market"
+              }
+            ]
+          }
+        },
+        {
+          "name": "owner",
+          "docs": [
+            "(instruction-catalogue.md §9); it can only ever be created empty and only `owner` can",
+            "later act on it."
+          ]
+        },
+        {
+          "name": "position",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  112,
+                  111,
+                  115,
+                  105,
+                  116,
+                  105,
+                  111,
+                  110
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "market"
+              },
+              {
+                "kind": "account",
+                "path": "owner"
+              }
+            ]
+          }
+        },
+        {
+          "name": "system_program",
+          "address": "11111111111111111111111111111111"
+        }
+      ],
+      "args": []
+    },
+    {
+      "name": "initialize_protocol",
+      "docs": [
+        "Creates the singleton `Protocol` account (`instruction-catalogue.md` §1)."
+      ],
+      "discriminator": [
+        188,
+        233,
+        252,
+        106,
+        134,
+        146,
+        202,
+        91
+      ],
+      "accounts": [
+        {
+          "name": "payer",
+          "docs": [
+            "Becomes `protocol.admin`. Whoever lands this transaction first wins — the deployment",
+            "checklist (`I-DEPLOY-01`) requires asserting `protocol.admin` immediately after, since",
+            "`instruction-catalogue.md` §1 names front-running initialization as the attack here."
+          ],
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "protocol",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  112,
+                  114,
+                  111,
+                  116,
+                  111,
+                  99,
+                  111,
+                  108
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "name": "system_program",
+          "address": "11111111111111111111111111111111"
+        }
+      ],
+      "args": [
+        {
+          "name": "args",
+          "type": {
+            "defined": {
+              "name": "InitProtocolArgs"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "liquidate",
+      "docs": [
+        "Liquidates an unhealthy position: strict `HF < WAD` (E-12), close-factor/dust-rule",
+        "`max_repay`, seizure with the collateral clamp, liquidation bonus, and the protocol's cut",
+        "taken from the bonus only (`instruction-catalogue.md` §17, `economic-model.md` §7).",
+        "Exactly one of `repay_assets`/`seize_collateral` must be nonzero; the other is derived.",
+        "",
+        "Phase 8 (`docs/composability.md`, ADR-0013): `callback_program`/`callback_collateral_account`",
+        "are optional. Omitting both reproduces Phase 6 behavior exactly (`I-LIQ-CB-02`). When",
+        "supplied, `callback_data` is forwarded verbatim as the callback CPI's instruction data --",
+        "Aegis defines no schema for it."
+      ],
+      "discriminator": [
+        223,
+        179,
+        226,
+        125,
+        48,
+        46,
+        39,
+        74
+      ],
+      "accounts": [
+        {
+          "name": "liquidator",
+          "docs": [
+            "Anyone -- permissionless, including the position's own owner (self-liquidation, U-LIQ-07)."
+          ],
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "market",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  109,
+                  97,
+                  114,
+                  107,
+                  101,
+                  116
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "market.collateral_mint",
+                "account": "Market"
+              },
+              {
+                "kind": "account",
+                "path": "market.loan_mint",
+                "account": "Market"
+              },
+              {
+                "kind": "account",
+                "path": "market.config_id",
+                "account": "Market"
+              }
+            ]
+          },
+          "relations": [
+            "position",
+            "fee_position"
+          ]
+        },
+        {
+          "name": "position",
+          "docs": [
+            "No `has_one = owner` -- the liquidator need not be, and is never required to be, the",
+            "position owner."
+          ],
+          "writable": true
+        },
+        {
+          "name": "fee_position",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  112,
+                  111,
+                  115,
+                  105,
+                  116,
+                  105,
+                  111,
+                  110
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "market"
+              },
+              {
+                "kind": "account",
+                "path": "market.fee_recipient",
+                "account": "Market"
+              }
+            ]
+          }
+        },
+        {
+          "name": "loan_vault",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  108,
+                  118,
+                  97,
+                  117,
+                  108,
+                  116
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "market"
+              }
+            ]
+          }
+        },
+        {
+          "name": "collateral_vault",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  99,
+                  118,
+                  97,
+                  117,
+                  108,
+                  116
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "market"
+              }
+            ]
+          }
+        },
+        {
+          "name": "liquidator_loan_ata",
+          "writable": true
+        },
+        {
+          "name": "liquidator_collateral_ata",
+          "docs": [
+            "Not constrained to any particular owner (`instruction-catalogue.md` §17: \"a liquidator may",
+            "direct proceeds anywhere\" -- the amount is fully determined by protocol state, not by who",
+            "controls this account)."
+          ],
+          "writable": true
+        },
+        {
+          "name": "loan_mint"
+        },
+        {
+          "name": "collateral_mint"
+        },
+        {
+          "name": "loan_token_program"
+        },
+        {
+          "name": "collateral_token_program"
+        },
+        {
+          "name": "collateral_price_update"
+        },
+        {
+          "name": "loan_price_update"
+        },
+        {
+          "name": "callback_program",
+          "docs": [
+            "The liquidator-selected, **UNTRUSTED** callback program. `None` reproduces Phase 6 behavior",
+            "exactly (`I-LIQ-CB-02`); a liquidator who never supplies this account needs no callback",
+            "program, no callback-specific remaining accounts, and no extra external dependency.",
+            "",
+            "callback receives is constructed explicitly in the handler (`build_callback_instruction`) —",
+            "this account is never itself passed into the callback's own CPI account list, and it is",
+            "never a signer (Aegis dispatches with `invoke`, never `invoke_signed`, for this CPI)."
+          ],
+          "optional": true
+        },
+        {
+          "name": "callback_collateral_account",
+          "docs": [
+            "Required iff `callback_program` is `Some`: receives the seized collateral before the",
+            "callback CPI. Ownership is deliberately unconstrained (typically the callback's own PDA) —",
+            "Aegis pins only the mint, per the least-privilege callback contract (ADR-0013 §1.4): Aegis",
+            "does not need to know or care who controls this account, only that it can safely receive",
+            "`market.collateral_mint`."
+          ],
+          "writable": true,
+          "optional": true
+        }
+      ],
+      "args": [
+        {
+          "name": "repay_assets",
+          "type": "u64"
+        },
+        {
+          "name": "seize_collateral",
+          "type": "u64"
+        },
+        {
+          "name": "callback_data",
+          "type": "bytes"
+        }
+      ]
+    },
+    {
+      "name": "ping",
+      "docs": [
+        "Does nothing and always succeeds. Phase 1's toolchain proof; unchanged in Phase 2."
+      ],
+      "discriminator": [
+        173,
+        0,
+        94,
+        236,
+        73,
+        133,
+        225,
+        153
+      ],
+      "accounts": [],
+      "args": []
+    },
+    {
+      "name": "repay",
+      "docs": [
+        "Repays debt on any position. No owner signature, no oracle, unpausable",
+        "(`instruction-catalogue.md` §15, INV-ADM-04). Clamped to the position's actual debt."
+      ],
+      "discriminator": [
+        234,
+        103,
+        67,
+        82,
+        208,
+        234,
+        219,
+        166
+      ],
+      "accounts": [
+        {
+          "name": "payer",
+          "docs": [
+            "Anyone — repaying someone else's debt requires no permission (INV-AUTH-03)."
+          ],
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "market",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  109,
+                  97,
+                  114,
+                  107,
+                  101,
+                  116
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "market.collateral_mint",
+                "account": "Market"
+              },
+              {
+                "kind": "account",
+                "path": "market.loan_mint",
+                "account": "Market"
+              },
+              {
+                "kind": "account",
+                "path": "market.config_id",
+                "account": "Market"
+              }
+            ]
+          },
+          "relations": [
+            "position",
+            "fee_position"
+          ]
+        },
+        {
+          "name": "position",
+          "docs": [
+            "No `has_one = owner` — `repay` targets any existing position in this market, not",
+            "necessarily one owned by `payer`."
+          ],
+          "writable": true
+        },
+        {
+          "name": "fee_position",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  112,
+                  111,
+                  115,
+                  105,
+                  116,
+                  105,
+                  111,
+                  110
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "market"
+              },
+              {
+                "kind": "account",
+                "path": "market.fee_recipient",
+                "account": "Market"
+              }
+            ]
+          }
+        },
+        {
+          "name": "loan_vault",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  108,
+                  118,
+                  97,
+                  117,
+                  108,
+                  116
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "market"
+              }
+            ]
+          }
+        },
+        {
+          "name": "payer_loan_ata",
+          "writable": true
+        },
+        {
+          "name": "loan_mint"
+        },
+        {
+          "name": "loan_token_program"
+        }
+      ],
+      "args": [
+        {
+          "name": "assets",
+          "type": "u64"
+        },
+        {
+          "name": "shares",
+          "type": "u128"
+        }
+      ]
+    },
+    {
+      "name": "supply",
+      "docs": [
+        "Deposits the loan asset, crediting the lender's own position with supply shares",
+        "(`instruction-catalogue.md` §12). Exactly one of `assets`/`shares` must be nonzero."
+      ],
+      "discriminator": [
+        81,
+        67,
+        116,
+        61,
+        250,
+        209,
+        5,
+        198
+      ],
+      "accounts": [
+        {
+          "name": "owner",
+          "docs": [
+            "The lender. `supply` always credits the signer's **own** position (there is no",
+            "third-party-supply feature analogous to `deposit_collateral`'s flexible `depositor` —",
+            "`account-model.md` §5.1 requires an owner signature for `supply`)."
+          ],
+          "writable": true,
+          "signer": true,
+          "relations": [
+            "position"
+          ]
+        },
+        {
+          "name": "market",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  109,
+                  97,
+                  114,
+                  107,
+                  101,
+                  116
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "market.collateral_mint",
+                "account": "Market"
+              },
+              {
+                "kind": "account",
+                "path": "market.loan_mint",
+                "account": "Market"
+              },
+              {
+                "kind": "account",
+                "path": "market.config_id",
+                "account": "Market"
+              }
+            ]
+          },
+          "relations": [
+            "position",
+            "fee_position"
+          ]
+        },
+        {
+          "name": "position",
+          "writable": true
+        },
+        {
+          "name": "fee_position",
+          "docs": [
+            "PDA-constrained to `PDA(market, market.fee_recipient)` (never a caller-supplied account) —",
+            "Anchor 1.0's default duplicate-mutable-account protection rejects any transaction where",
+            "this happens to equal `position` (T-11, `A-ACC-01`)."
+          ],
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  112,
+                  111,
+                  115,
+                  105,
+                  116,
+                  105,
+                  111,
+                  110
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "market"
+              },
+              {
+                "kind": "account",
+                "path": "market.fee_recipient",
+                "account": "Market"
+              }
+            ]
+          }
+        },
+        {
+          "name": "loan_vault",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  108,
+                  118,
+                  97,
+                  117,
+                  108,
+                  116
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "market"
+              }
+            ]
+          }
+        },
+        {
+          "name": "owner_loan_ata",
+          "writable": true
+        },
+        {
+          "name": "loan_mint"
+        },
+        {
+          "name": "loan_token_program"
+        }
+      ],
+      "args": [
+        {
+          "name": "assets",
+          "type": "u64"
+        },
+        {
+          "name": "shares",
+          "type": "u128"
+        }
+      ]
+    },
+    {
+      "name": "withdraw",
+      "docs": [
+        "Redeems the lender's own supply shares, bounded by free liquidity",
+        "(`instruction-catalogue.md` §13)."
+      ],
+      "discriminator": [
+        183,
+        18,
+        70,
+        156,
+        148,
+        109,
+        161,
+        34
+      ],
+      "accounts": [
+        {
+          "name": "owner",
+          "writable": true,
+          "signer": true,
+          "relations": [
+            "position"
+          ]
+        },
+        {
+          "name": "market",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  109,
+                  97,
+                  114,
+                  107,
+                  101,
+                  116
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "market.collateral_mint",
+                "account": "Market"
+              },
+              {
+                "kind": "account",
+                "path": "market.loan_mint",
+                "account": "Market"
+              },
+              {
+                "kind": "account",
+                "path": "market.config_id",
+                "account": "Market"
+              }
+            ]
+          },
+          "relations": [
+            "position",
+            "fee_position"
+          ]
+        },
+        {
+          "name": "position",
+          "writable": true
+        },
+        {
+          "name": "fee_position",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  112,
+                  111,
+                  115,
+                  105,
+                  116,
+                  105,
+                  111,
+                  110
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "market"
+              },
+              {
+                "kind": "account",
+                "path": "market.fee_recipient",
+                "account": "Market"
+              }
+            ]
+          }
+        },
+        {
+          "name": "loan_vault",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  108,
+                  118,
+                  97,
+                  117,
+                  108,
+                  116
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "market"
+              }
+            ]
+          }
+        },
+        {
+          "name": "owner_loan_ata",
+          "writable": true
+        },
+        {
+          "name": "loan_mint"
+        },
+        {
+          "name": "loan_token_program"
+        }
+      ],
+      "args": [
+        {
+          "name": "assets",
+          "type": "u64"
+        },
+        {
+          "name": "shares",
+          "type": "u128"
+        }
+      ]
+    },
+    {
+      "name": "withdraw_collateral",
+      "docs": [
+        "Withdraws collateral. A debt-free position reads no oracle at all (E-08); a position with",
+        "outstanding `borrow_shares` validates the oracle and requires post-withdrawal",
+        "`debt_value <= collateral_value * max_ltv / WAD` (`instruction-catalogue.md` §11)."
+      ],
+      "discriminator": [
+        115,
+        135,
+        168,
+        106,
+        139,
+        214,
+        138,
+        150
+      ],
+      "accounts": [
+        {
+          "name": "owner",
+          "docs": [
+            "**Required signer** (`instruction-catalogue.md` §11, INV-AUTH-02) — the asymmetric",
+            "counterpart to `deposit_collateral`'s no-signer-required depositor (INV-AUTH-03): this",
+            "operation can only reduce the position's safety, so the owner must authorize it."
+          ],
+          "signer": true,
+          "relations": [
+            "position"
+          ]
+        },
+        {
+          "name": "market",
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  109,
+                  97,
+                  114,
+                  107,
+                  101,
+                  116
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "market.collateral_mint",
+                "account": "Market"
+              },
+              {
+                "kind": "account",
+                "path": "market.loan_mint",
+                "account": "Market"
+              },
+              {
+                "kind": "account",
+                "path": "market.config_id",
+                "account": "Market"
+              }
+            ]
+          },
+          "relations": [
+            "position"
+          ]
+        },
+        {
+          "name": "position",
+          "writable": true
+        },
+        {
+          "name": "collateral_vault",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  99,
+                  118,
+                  97,
+                  117,
+                  108,
+                  116
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "market"
+              }
+            ]
+          }
+        },
+        {
+          "name": "owner_collateral_ata",
+          "writable": true
+        },
+        {
+          "name": "collateral_mint"
+        },
+        {
+          "name": "collateral_token_program"
+        },
+        {
+          "name": "collateral_price_update",
+          "docs": [
+            "`position.borrow_shares > 0`. A debt-free withdrawal never reads either price account",
+            "(E-08) — a caller may pass any account here in that case."
+          ]
+        },
+        {
+          "name": "loan_price_update"
+        }
+      ],
+      "args": [
+        {
+          "name": "amount",
+          "type": "u64"
+        }
+      ]
+    },
+    {
+      "name": "withdraw_collateral_fees",
+      "docs": [
+        "Admin withdrawal of protocol-owned accrued collateral fees only, bounded by",
+        "`market.collateral_fee_accrued` (`instruction-catalogue.md` §19) — structurally incapable",
+        "of touching user collateral (INV-ADM-01, `A-ADM-02`)."
+      ],
+      "discriminator": [
+        8,
+        36,
+        107,
+        152,
+        237,
+        145,
+        209,
+        244
+      ],
+      "accounts": [
+        {
+          "name": "admin",
+          "signer": true,
+          "relations": [
+            "protocol"
+          ]
+        },
+        {
+          "name": "protocol",
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  112,
+                  114,
+                  111,
+                  116,
+                  111,
+                  99,
+                  111,
+                  108
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "name": "market",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  109,
+                  97,
+                  114,
+                  107,
+                  101,
+                  116
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "market.collateral_mint",
+                "account": "Market"
+              },
+              {
+                "kind": "account",
+                "path": "market.loan_mint",
+                "account": "Market"
+              },
+              {
+                "kind": "account",
+                "path": "market.config_id",
+                "account": "Market"
+              }
+            ]
+          }
+        },
+        {
+          "name": "collateral_vault",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  99,
+                  118,
+                  97,
+                  117,
+                  108,
+                  116
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "market"
+              }
+            ]
+          }
+        },
+        {
+          "name": "admin_collateral_ata",
+          "writable": true
+        },
+        {
+          "name": "collateral_mint"
+        },
+        {
+          "name": "collateral_token_program"
+        }
+      ],
+      "args": [
+        {
+          "name": "amount",
+          "type": "u64"
+        }
+      ]
+    }
+  ],
+  "accounts": [
+    {
+      "name": "Market",
+      "discriminator": [
+        219,
+        190,
+        213,
+        55,
+        0,
+        227,
+        198,
+        154
+      ]
+    },
+    {
+      "name": "Position",
+      "discriminator": [
+        170,
+        188,
+        143,
+        228,
+        122,
+        64,
+        247,
+        208
+      ]
+    },
+    {
+      "name": "Protocol",
+      "discriminator": [
+        45,
+        39,
+        101,
+        43,
+        115,
+        72,
+        131,
+        40
+      ]
+    }
+  ],
+  "events": [
+    {
+      "name": "BadDebtAbsorbed",
+      "discriminator": [
+        79,
+        7,
+        46,
+        220,
+        149,
+        148,
+        250,
+        170
+      ]
+    },
+    {
+      "name": "Borrowed",
+      "discriminator": [
+        225,
+        182,
+        241,
+        78,
+        34,
+        145,
+        253,
+        230
+      ]
+    },
+    {
+      "name": "CollateralDeposited",
+      "discriminator": [
+        244,
+        62,
+        77,
+        11,
+        135,
+        112,
+        61,
+        96
+      ]
+    },
+    {
+      "name": "CollateralFeesWithdrawn",
+      "discriminator": [
+        221,
+        146,
+        167,
+        114,
+        246,
+        136,
+        215,
+        194
+      ]
+    },
+    {
+      "name": "CollateralWithdrawn",
+      "discriminator": [
+        51,
+        224,
+        133,
+        106,
+        74,
+        173,
+        72,
+        82
+      ]
+    },
+    {
+      "name": "InterestAccrued",
+      "discriminator": [
+        79,
+        218,
+        196,
+        73,
+        32,
+        148,
+        138,
+        71
+      ]
+    },
+    {
+      "name": "Liquidated",
+      "discriminator": [
+        231,
+        57,
+        55,
+        75,
+        0,
+        170,
+        246,
+        68
+      ]
+    },
+    {
+      "name": "MarketCreated",
+      "discriminator": [
+        88,
+        184,
+        130,
+        231,
+        226,
+        84,
+        6,
+        58
+      ]
+    },
+    {
+      "name": "PositionClosed",
+      "discriminator": [
+        157,
+        163,
+        227,
+        228,
+        13,
+        97,
+        138,
+        121
+      ]
+    },
+    {
+      "name": "PositionInitialized",
+      "discriminator": [
+        105,
+        129,
+        56,
+        195,
+        211,
+        51,
+        160,
+        231
+      ]
+    },
+    {
+      "name": "ProtocolInitialized",
+      "discriminator": [
+        173,
+        122,
+        168,
+        254,
+        9,
+        118,
+        76,
+        132
+      ]
+    },
+    {
+      "name": "Repaid",
+      "discriminator": [
+        38,
+        248,
+        231,
+        7,
+        150,
+        164,
+        172,
+        23
+      ]
+    },
+    {
+      "name": "Supplied",
+      "discriminator": [
+        137,
+        114,
+        239,
+        72,
+        162,
+        75,
+        133,
+        39
+      ]
+    },
+    {
+      "name": "Withdrawn",
+      "discriminator": [
+        20,
+        89,
+        223,
+        198,
+        194,
+        124,
+        219,
+        13
+      ]
+    }
+  ],
+  "errors": [
+    {
+      "code": 6000,
+      "name": "NotProtocolAdmin",
+      "msg": "Signer does not match protocol.admin"
+    },
+    {
+      "code": 6001,
+      "name": "NotPositionOwner",
+      "msg": "Signer does not match position.owner"
+    },
+    {
+      "code": 6002,
+      "name": "PositionMarketMismatch",
+      "msg": "Position does not belong to the supplied market"
+    },
+    {
+      "code": 6020,
+      "name": "ArithmeticOverflow",
+      "msg": "Arithmetic overflow"
+    },
+    {
+      "code": 6021,
+      "name": "DivisionByZero",
+      "msg": "Division by zero"
+    },
+    {
+      "code": 6040,
+      "name": "OracleUnsupportedKind",
+      "msg": "market.oracle_kind is not a recognized oracle kind"
+    },
+    {
+      "code": 6041,
+      "name": "OracleAccountOwnerMismatch",
+      "msg": "O-1: price-update account is not owned by the Pyth receiver program"
+    },
+    {
+      "code": 6042,
+      "name": "OracleAccountInvalidData",
+      "msg": "O-2: price-update account failed to deserialize as a PriceUpdateV2"
+    },
+    {
+      "code": 6043,
+      "name": "OracleFeedMismatch",
+      "msg": "O-3: price-update account's feed_id does not match the market's configured feed"
+    },
+    {
+      "code": 6044,
+      "name": "OracleVerificationLevelNotFull",
+      "msg": "O-4: price update is not fully verified (VerificationLevel::Full required)"
+    },
+    {
+      "code": 6045,
+      "name": "OraclePriceStale",
+      "msg": "O-5: price update is older than market.max_price_age_secs"
+    },
+    {
+      "code": 6046,
+      "name": "OraclePriceInFuture",
+      "msg": "O-6: price update's publish_time is unacceptably far in the future"
+    },
+    {
+      "code": 6047,
+      "name": "OracleDuplicatePriceAccounts",
+      "msg": "O-11: the collateral and loan price-update accounts must be distinct"
+    },
+    {
+      "code": 6048,
+      "name": "OraclePriceNotPositive",
+      "msg": "O-7: oracle price is zero or negative"
+    },
+    {
+      "code": 6049,
+      "name": "OracleConfidenceTooWide",
+      "msg": "O-8: oracle confidence interval exceeds market.max_conf_bps"
+    },
+    {
+      "code": 6050,
+      "name": "OraclePriceOutOfBounds",
+      "msg": "O-9: confidence-adjusted price falls outside [MIN_PRICE_WAD, MAX_PRICE_WAD]"
+    },
+    {
+      "code": 6051,
+      "name": "ExceedsMaxLtv",
+      "msg": "debt_value exceeds collateral_value * max_ltv / WAD after this operation"
+    },
+    {
+      "code": 6060,
+      "name": "DebtBelowMinimum",
+      "msg": "Position debt after this operation must be exactly zero or at least market.min_debt"
+    },
+    {
+      "code": 6080,
+      "name": "LiquidationBonusExceedsThresholdBound",
+      "msg": "liq_threshold * (WAD + liq_bonus) / WAD must be strictly less than WAD (INV-LIQ-06)"
+    },
+    {
+      "code": 6081,
+      "name": "NotLiquidatable",
+      "msg": "INV-LIQ-01/INV-SOLV-02: position health factor is not strictly below WAD (HF == WAD is NOT liquidatable)"
+    },
+    {
+      "code": 6082,
+      "name": "RepayExceedsMaxRepay",
+      "msg": "repay_assets exceeds max_repay (close factor / dust rule / full-liquidation bound)"
+    },
+    {
+      "code": 6083,
+      "name": "SeizeExceedsCollateral",
+      "msg": "seize_collateral exceeds position.collateral_amount"
+    },
+    {
+      "code": 6084,
+      "name": "NothingToLiquidate",
+      "msg": "liquidate requires collateral_amount > 0 and borrow_shares > 0"
+    },
+    {
+      "code": 6085,
+      "name": "BadDebtRequiresZeroCollateral",
+      "msg": "absorb_bad_debt requires position.collateral_amount to be exactly zero"
+    },
+    {
+      "code": 6086,
+      "name": "BadDebtRequiresOutstandingDebt",
+      "msg": "absorb_bad_debt requires position.borrow_shares > 0"
+    },
+    {
+      "code": 6087,
+      "name": "InsufficientCollateralFees",
+      "msg": "amount exceeds market.collateral_fee_accrued"
+    },
+    {
+      "code": 6100,
+      "name": "TokenProgramMintMismatch",
+      "msg": "Mint account owner does not match the supplied token program"
+    },
+    {
+      "code": 6101,
+      "name": "UnsupportedTokenExtension",
+      "msg": "Token-2022 extension is not on the positive allowlist"
+    },
+    {
+      "code": 6102,
+      "name": "TransferFeeNotAllowedForLoanAsset",
+      "msg": "A transfer-fee mint cannot be used as the loan asset"
+    },
+    {
+      "code": 6103,
+      "name": "FreezeAuthorityNotAcknowledged",
+      "msg": "Mint has a freeze authority that was not acknowledged"
+    },
+    {
+      "code": 6104,
+      "name": "InvalidMintAccountData",
+      "msg": "Mint account data could not be parsed as a Token or Token-2022 mint"
+    },
+    {
+      "code": 6105,
+      "name": "VaultMintMismatch",
+      "msg": "Mint account does not match the market's pinned mint for this asset"
+    },
+    {
+      "code": 6106,
+      "name": "VaultMismatch",
+      "msg": "Token account does not match the market's canonical vault for this asset"
+    },
+    {
+      "code": 6107,
+      "name": "TokenProgramMismatch",
+      "msg": "Token program does not match the market's pinned token program for this asset"
+    },
+    {
+      "code": 6108,
+      "name": "VaultAccountingError",
+      "msg": "Measured post-CPI vault balance decreased instead of increasing"
+    },
+    {
+      "code": 6109,
+      "name": "ZeroAmount",
+      "msg": "amount must be greater than zero"
+    },
+    {
+      "code": 6110,
+      "name": "InsufficientCollateral",
+      "msg": "amount exceeds position.collateral_amount"
+    },
+    {
+      "code": 6111,
+      "name": "InconsistentInput",
+      "msg": "exactly one of assets/shares must be nonzero, not both"
+    },
+    {
+      "code": 6112,
+      "name": "InsufficientLiquidity",
+      "msg": "requested assets exceed the market's free liquidity (total_supply_assets - total_borrow_assets)"
+    },
+    {
+      "code": 6113,
+      "name": "InsufficientShares",
+      "msg": "requested shares exceed the position's available share balance"
+    },
+    {
+      "code": 6120,
+      "name": "DefaultPubkeyNotAllowed",
+      "msg": "guardian and fee_recipient must not be the default Pubkey"
+    },
+    {
+      "code": 6121,
+      "name": "SameCollateralAndLoanMint",
+      "msg": "collateral_mint and loan_mint must differ"
+    },
+    {
+      "code": 6122,
+      "name": "InvalidMaxLtvOrThreshold",
+      "msg": "require 0 < max_ltv < liq_threshold < WAD"
+    },
+    {
+      "code": 6123,
+      "name": "InvalidLiqBonus",
+      "msg": "liq_bonus must be in [0, MAX_LIQ_BONUS]"
+    },
+    {
+      "code": 6124,
+      "name": "InvalidCloseFactor",
+      "msg": "close_factor must be in [MIN_CLOSE_FACTOR, WAD]"
+    },
+    {
+      "code": 6125,
+      "name": "InvalidFullLiqHf",
+      "msg": "full_liq_hf must be in (0, WAD]"
+    },
+    {
+      "code": 6126,
+      "name": "InvalidLiqProtocolFee",
+      "msg": "liq_protocol_fee must be in [0, MAX_LIQ_PROTOCOL_FEE]"
+    },
+    {
+      "code": 6127,
+      "name": "InvalidFee",
+      "msg": "fee must be in [0, MAX_FEE]"
+    },
+    {
+      "code": 6128,
+      "name": "InvalidMinDebt",
+      "msg": "min_debt must be greater than zero"
+    },
+    {
+      "code": 6129,
+      "name": "InvalidIrmParams",
+      "msg": "IRM parameters violate 0 < u_kink < WAD, max_rate_ps > 0, or rate <= max_rate_ps"
+    },
+    {
+      "code": 6130,
+      "name": "InvalidMaxPriceAge",
+      "msg": "max_price_age_secs must be in [1, 3600]"
+    },
+    {
+      "code": 6131,
+      "name": "InvalidMaxConfBps",
+      "msg": "max_conf_bps must be in [1, 2000]"
+    },
+    {
+      "code": 6140,
+      "name": "InvalidPositionOwner",
+      "msg": "position owner must not be the default Pubkey"
+    },
+    {
+      "code": 6141,
+      "name": "PositionNotEmpty",
+      "msg": "close_position requires supply_shares, borrow_shares and collateral_amount to be exactly zero"
+    },
+    {
+      "code": 6160,
+      "name": "LiquidationCallbackReentrancy",
+      "msg": "A liquidation callback is already in flight on this market (A-CPI-02, protocol-level guard)"
+    },
+    {
+      "code": 6161,
+      "name": "LiquidationCallbackNotExecutable",
+      "msg": "callback_program was supplied but is not marked executable"
+    },
+    {
+      "code": 6162,
+      "name": "LiquidationCallbackAccountMismatch",
+      "msg": "callback_collateral_account is required exactly when callback_program is supplied, and its mint must match market.collateral_mint"
+    },
+    {
+      "code": 6163,
+      "name": "CallbackAccountNotPermitted",
+      "msg": "a remaining account supplied to the liquidation callback aliases a protected Aegis account (INV-AUTH-07)"
+    },
+    {
+      "code": 6164,
+      "name": "LiquidationCallbackRepaymentShortfall",
+      "msg": "measured post-callback loan_vault delta is less than the required repayment (A-CPI-04)"
+    }
+  ],
+  "types": [
+    {
+      "name": "BadDebtAbsorbed",
+      "docs": [
+        "`economic-model.md` §8.2, `instruction-catalogue.md` §18. `absorbed_by_protocol` is the debt",
+        "absorbed by burning `fee_position.supply_shares` (protocol first-loss); `socialized` is the",
+        "residual left to fall on `total_supply_assets`/lenders. `absorbed_by_protocol + socialized ==",
+        "bad_assets` always."
+      ],
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "market",
+            "type": "pubkey"
+          },
+          {
+            "name": "position",
+            "type": "pubkey"
+          },
+          {
+            "name": "bad_assets",
+            "type": "u64"
+          },
+          {
+            "name": "absorbed_by_protocol",
+            "type": "u64"
+          },
+          {
+            "name": "socialized",
+            "type": "u64"
+          },
+          {
+            "name": "fee_shares_burned",
+            "type": "u128"
+          }
+        ]
+      }
+    },
+    {
+      "name": "Borrowed",
+      "docs": [
+        "Defined for API completeness against `instruction-catalogue.md`'s event catalogue; never",
+        "emitted by Phase 4's `borrow` handler, which is hard-gated to always fail before any state",
+        "transition (`docs/phases/phase-04-lending.md` #17: \"Do not emit `Borrowed` for the hard-gated",
+        "unsuccessful borrow path\")."
+      ],
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "market",
+            "type": "pubkey"
+          },
+          {
+            "name": "position",
+            "type": "pubkey"
+          },
+          {
+            "name": "owner",
+            "type": "pubkey"
+          },
+          {
+            "name": "assets_out",
+            "type": "u64"
+          },
+          {
+            "name": "shares_minted",
+            "type": "u128"
+          }
+        ]
+      }
+    },
+    {
+      "name": "CollateralDeposited",
+      "docs": [
+        "`amount_in` is the requested transfer amount; `credited` is the measured post-CPI delta",
+        "actually recorded against `position.collateral_amount` (`account-model.md` §6.4). The two",
+        "differ exactly when the collateral mint charges a Token-2022 transfer fee."
+      ],
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "market",
+            "type": "pubkey"
+          },
+          {
+            "name": "position",
+            "type": "pubkey"
+          },
+          {
+            "name": "depositor",
+            "type": "pubkey"
+          },
+          {
+            "name": "amount_in",
+            "type": "u64"
+          },
+          {
+            "name": "credited",
+            "type": "u64"
+          }
+        ]
+      }
+    },
+    {
+      "name": "CollateralFeesWithdrawn",
+      "docs": [
+        "`instruction-catalogue.md` §19."
+      ],
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "market",
+            "type": "pubkey"
+          },
+          {
+            "name": "admin",
+            "type": "pubkey"
+          },
+          {
+            "name": "amount",
+            "type": "u64"
+          },
+          {
+            "name": "remaining_collateral_fee_accrued",
+            "type": "u64"
+          }
+        ]
+      }
+    },
+    {
+      "name": "CollateralWithdrawn",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "market",
+            "type": "pubkey"
+          },
+          {
+            "name": "position",
+            "type": "pubkey"
+          },
+          {
+            "name": "owner",
+            "type": "pubkey"
+          },
+          {
+            "name": "amount",
+            "type": "u64"
+          }
+        ]
+      }
+    },
+    {
+      "name": "CreateMarketArgs",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "config_id",
+            "type": "u16"
+          },
+          {
+            "name": "oracle_kind",
+            "type": "u8"
+          },
+          {
+            "name": "collateral_feed_id",
+            "type": {
+              "array": [
+                "u8",
+                32
+              ]
+            }
+          },
+          {
+            "name": "loan_feed_id",
+            "type": {
+              "array": [
+                "u8",
+                32
+              ]
+            }
+          },
+          {
+            "name": "max_price_age_secs",
+            "type": "u32"
+          },
+          {
+            "name": "max_conf_bps",
+            "type": "u16"
+          },
+          {
+            "name": "max_ltv",
+            "type": "u128"
+          },
+          {
+            "name": "liq_threshold",
+            "type": "u128"
+          },
+          {
+            "name": "liq_bonus",
+            "type": "u128"
+          },
+          {
+            "name": "close_factor",
+            "type": "u128"
+          },
+          {
+            "name": "full_liq_hf",
+            "type": "u128"
+          },
+          {
+            "name": "liq_protocol_fee",
+            "type": "u128"
+          },
+          {
+            "name": "fee",
+            "type": "u128"
+          },
+          {
+            "name": "min_debt",
+            "type": "u64"
+          },
+          {
+            "name": "base_rate_ps",
+            "type": "u128"
+          },
+          {
+            "name": "slope1_ps",
+            "type": "u128"
+          },
+          {
+            "name": "slope2_ps",
+            "type": "u128"
+          },
+          {
+            "name": "u_kink",
+            "type": "u128"
+          },
+          {
+            "name": "max_rate_ps",
+            "type": "u128"
+          },
+          {
+            "name": "ack_freeze_authority",
+            "type": "bool"
+          }
+        ]
+      }
+    },
+    {
+      "name": "InitProtocolArgs",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "guardian",
+            "type": "pubkey"
+          },
+          {
+            "name": "fee_recipient",
+            "type": "pubkey"
+          }
+        ]
+      }
+    },
+    {
+      "name": "InterestAccrued",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "market",
+            "type": "pubkey"
+          },
+          {
+            "name": "interest",
+            "type": "u64"
+          },
+          {
+            "name": "fee_amount",
+            "type": "u64"
+          },
+          {
+            "name": "fee_shares",
+            "type": "u128"
+          },
+          {
+            "name": "total_borrow_assets",
+            "type": "u64"
+          },
+          {
+            "name": "total_supply_assets",
+            "type": "u64"
+          }
+        ]
+      }
+    },
+    {
+      "name": "Liquidated",
+      "docs": [
+        "`economic-model.md` §7.3, `instruction-catalogue.md` §17. `hf_before`/`hf_after` are the",
+        "health factor immediately before and after this liquidation (`P-LIQ-1`'s on-chain evidence",
+        "trail); `clamped` records whether the collateral-clamp path (`economic-model.md` §7.2) fired.",
+        "`callback_program` is `None` for the Phase 6 path (`I-LIQ-CB-02`) and `Some(program_id)` when",
+        "the Phase 8 callback branch ran — part of the permanent audit record of which liquidations used",
+        "external composability (docs/composability.md)."
+      ],
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "market",
+            "type": "pubkey"
+          },
+          {
+            "name": "position",
+            "type": "pubkey"
+          },
+          {
+            "name": "liquidator",
+            "type": "pubkey"
+          },
+          {
+            "name": "repay_assets",
+            "type": "u64"
+          },
+          {
+            "name": "repay_shares",
+            "type": "u128"
+          },
+          {
+            "name": "base_seize",
+            "type": "u64"
+          },
+          {
+            "name": "total_seize",
+            "type": "u64"
+          },
+          {
+            "name": "bonus_amount",
+            "type": "u64"
+          },
+          {
+            "name": "protocol_cut",
+            "type": "u64"
+          },
+          {
+            "name": "to_liquidator",
+            "type": "u64"
+          },
+          {
+            "name": "clamped",
+            "type": "bool"
+          },
+          {
+            "name": "hf_before",
+            "type": "u128"
+          },
+          {
+            "name": "hf_after",
+            "type": "u128"
+          },
+          {
+            "name": "callback_program",
+            "type": {
+              "option": "pubkey"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "Market",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "collateral_mint",
+            "type": "pubkey"
+          },
+          {
+            "name": "loan_mint",
+            "type": "pubkey"
+          },
+          {
+            "name": "collateral_token_program",
+            "type": "pubkey"
+          },
+          {
+            "name": "loan_token_program",
+            "type": "pubkey"
+          },
+          {
+            "name": "collateral_vault",
+            "type": "pubkey"
+          },
+          {
+            "name": "loan_vault",
+            "type": "pubkey"
+          },
+          {
+            "name": "fee_recipient",
+            "type": "pubkey"
+          },
+          {
+            "name": "config_id",
+            "type": "u16"
+          },
+          {
+            "name": "collateral_decimals",
+            "type": "u8"
+          },
+          {
+            "name": "loan_decimals",
+            "type": "u8"
+          },
+          {
+            "name": "oracle_kind",
+            "type": "u8"
+          },
+          {
+            "name": "collateral_feed_id",
+            "type": {
+              "array": [
+                "u8",
+                32
+              ]
+            }
+          },
+          {
+            "name": "loan_feed_id",
+            "type": {
+              "array": [
+                "u8",
+                32
+              ]
+            }
+          },
+          {
+            "name": "max_price_age_secs",
+            "type": "u32"
+          },
+          {
+            "name": "max_conf_bps",
+            "type": "u16"
+          },
+          {
+            "name": "max_ltv",
+            "type": "u128"
+          },
+          {
+            "name": "liq_threshold",
+            "type": "u128"
+          },
+          {
+            "name": "liq_bonus",
+            "type": "u128"
+          },
+          {
+            "name": "close_factor",
+            "type": "u128"
+          },
+          {
+            "name": "full_liq_hf",
+            "type": "u128"
+          },
+          {
+            "name": "liq_protocol_fee",
+            "type": "u128"
+          },
+          {
+            "name": "fee",
+            "type": "u128"
+          },
+          {
+            "name": "min_debt",
+            "type": "u64"
+          },
+          {
+            "name": "base_rate_ps",
+            "type": "u128"
+          },
+          {
+            "name": "slope1_ps",
+            "type": "u128"
+          },
+          {
+            "name": "slope2_ps",
+            "type": "u128"
+          },
+          {
+            "name": "u_kink",
+            "type": "u128"
+          },
+          {
+            "name": "max_rate_ps",
+            "type": "u128"
+          },
+          {
+            "name": "total_supply_assets",
+            "type": "u64"
+          },
+          {
+            "name": "total_supply_shares",
+            "type": "u128"
+          },
+          {
+            "name": "total_borrow_assets",
+            "type": "u64"
+          },
+          {
+            "name": "total_borrow_shares",
+            "type": "u128"
+          },
+          {
+            "name": "collateral_fee_accrued",
+            "type": "u64"
+          },
+          {
+            "name": "last_accrual_ts",
+            "type": "i64"
+          },
+          {
+            "name": "paused",
+            "type": "u8"
+          },
+          {
+            "name": "flags",
+            "type": "u8"
+          },
+          {
+            "name": "bump",
+            "type": "u8"
+          },
+          {
+            "name": "collateral_vault_bump",
+            "type": "u8"
+          },
+          {
+            "name": "loan_vault_bump",
+            "type": "u8"
+          },
+          {
+            "name": "liquidation_guard",
+            "docs": [
+              "Phase 8 (ADR-0013, `account-model.md` §4): `1` while a liquidation callback CPI is in",
+              "flight on this market, `0` otherwise. Checked unconditionally at the top of `liquidate`;",
+              "no other instruction reads or writes it. One byte moved out of `_reserved` — `Market::LEN`",
+              "is unchanged."
+            ],
+            "type": "u8"
+          },
+          {
+            "name": "_reserved",
+            "type": {
+              "array": [
+                "u8",
+                63
+              ]
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "MarketCreated",
+      "docs": [
+        "The full parameter snapshot for a newly created market — the permanent audit record of the",
+        "market's risk configuration and the exact Token-2022 extension inventory that was accepted for",
+        "each mint (`token-compatibility.md` §6 step 7)."
+      ],
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "market",
+            "type": "pubkey"
+          },
+          {
+            "name": "collateral_mint",
+            "type": "pubkey"
+          },
+          {
+            "name": "loan_mint",
+            "type": "pubkey"
+          },
+          {
+            "name": "collateral_token_program",
+            "type": "pubkey"
+          },
+          {
+            "name": "loan_token_program",
+            "type": "pubkey"
+          },
+          {
+            "name": "collateral_vault",
+            "type": "pubkey"
+          },
+          {
+            "name": "loan_vault",
+            "type": "pubkey"
+          },
+          {
+            "name": "fee_recipient",
+            "type": "pubkey"
+          },
+          {
+            "name": "fee_position",
+            "type": "pubkey"
+          },
+          {
+            "name": "config_id",
+            "type": "u16"
+          },
+          {
+            "name": "collateral_decimals",
+            "type": "u8"
+          },
+          {
+            "name": "loan_decimals",
+            "type": "u8"
+          },
+          {
+            "name": "oracle_kind",
+            "type": "u8"
+          },
+          {
+            "name": "collateral_feed_id",
+            "type": {
+              "array": [
+                "u8",
+                32
+              ]
+            }
+          },
+          {
+            "name": "loan_feed_id",
+            "type": {
+              "array": [
+                "u8",
+                32
+              ]
+            }
+          },
+          {
+            "name": "max_price_age_secs",
+            "type": "u32"
+          },
+          {
+            "name": "max_conf_bps",
+            "type": "u16"
+          },
+          {
+            "name": "max_ltv",
+            "type": "u128"
+          },
+          {
+            "name": "liq_threshold",
+            "type": "u128"
+          },
+          {
+            "name": "liq_bonus",
+            "type": "u128"
+          },
+          {
+            "name": "close_factor",
+            "type": "u128"
+          },
+          {
+            "name": "full_liq_hf",
+            "type": "u128"
+          },
+          {
+            "name": "liq_protocol_fee",
+            "type": "u128"
+          },
+          {
+            "name": "fee",
+            "type": "u128"
+          },
+          {
+            "name": "min_debt",
+            "type": "u64"
+          },
+          {
+            "name": "base_rate_ps",
+            "type": "u128"
+          },
+          {
+            "name": "slope1_ps",
+            "type": "u128"
+          },
+          {
+            "name": "slope2_ps",
+            "type": "u128"
+          },
+          {
+            "name": "u_kink",
+            "type": "u128"
+          },
+          {
+            "name": "max_rate_ps",
+            "type": "u128"
+          },
+          {
+            "name": "flags",
+            "type": "u8"
+          },
+          {
+            "name": "collateral_extensions",
+            "docs": [
+              "Token-2022 extension discriminants (`ExtensionType as u16`) accepted for the collateral",
+              "mint. Empty for a classic SPL Token mint."
+            ],
+            "type": {
+              "vec": "u16"
+            }
+          },
+          {
+            "name": "loan_extensions",
+            "docs": [
+              "As above, for the loan mint."
+            ],
+            "type": {
+              "vec": "u16"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "Position",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "market",
+            "docs": [
+              "`has_one` target back to the owning `Market`."
+            ],
+            "type": "pubkey"
+          },
+          {
+            "name": "owner",
+            "type": "pubkey"
+          },
+          {
+            "name": "supply_shares",
+            "type": "u128"
+          },
+          {
+            "name": "borrow_shares",
+            "type": "u128"
+          },
+          {
+            "name": "collateral_amount",
+            "type": "u64"
+          },
+          {
+            "name": "bump",
+            "docs": [
+              "Canonical bump for `PDA([b\"position\", market, owner])`."
+            ],
+            "type": "u8"
+          },
+          {
+            "name": "_reserved",
+            "docs": [
+              "Forward-compatibility space. Always written as all-zero; never read."
+            ],
+            "type": {
+              "array": [
+                "u8",
+                32
+              ]
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "PositionClosed",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "market",
+            "type": "pubkey"
+          },
+          {
+            "name": "position",
+            "type": "pubkey"
+          },
+          {
+            "name": "owner",
+            "type": "pubkey"
+          }
+        ]
+      }
+    },
+    {
+      "name": "PositionInitialized",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "market",
+            "type": "pubkey"
+          },
+          {
+            "name": "position",
+            "type": "pubkey"
+          },
+          {
+            "name": "owner",
+            "type": "pubkey"
+          }
+        ]
+      }
+    },
+    {
+      "name": "Protocol",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "admin",
+            "docs": [
+              "Full authority. Set once at `initialize_protocol` to the deployer."
+            ],
+            "type": "pubkey"
+          },
+          {
+            "name": "pending_admin",
+            "docs": [
+              "Two-step admin transfer target (Phase 12). `Pubkey::default()` means \"none pending\"."
+            ],
+            "type": "pubkey"
+          },
+          {
+            "name": "guardian",
+            "docs": [
+              "Pause-only authority — may set pause bits but never clear them (INV-AUTH-04)."
+            ],
+            "type": "pubkey"
+          },
+          {
+            "name": "fee_recipient",
+            "docs": [
+              "Default fee recipient snapshotted into every new `Market` at creation."
+            ],
+            "type": "pubkey"
+          },
+          {
+            "name": "paused",
+            "docs": [
+              "Global pause bitflags (`constants::PAUSE_*`)."
+            ],
+            "type": "u8"
+          },
+          {
+            "name": "bump",
+            "docs": [
+              "Canonical bump for `PDA([b\"protocol\"])`."
+            ],
+            "type": "u8"
+          },
+          {
+            "name": "_reserved",
+            "docs": [
+              "Forward-compatibility space for additive fields without a realloc (INV-RES-05). Always",
+              "written as all-zero; never read."
+            ],
+            "type": {
+              "array": [
+                "u8",
+                64
+              ]
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "ProtocolInitialized",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "protocol",
+            "type": "pubkey"
+          },
+          {
+            "name": "admin",
+            "type": "pubkey"
+          },
+          {
+            "name": "guardian",
+            "type": "pubkey"
+          },
+          {
+            "name": "fee_recipient",
+            "type": "pubkey"
+          }
+        ]
+      }
+    },
+    {
+      "name": "Repaid",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "market",
+            "type": "pubkey"
+          },
+          {
+            "name": "position",
+            "type": "pubkey"
+          },
+          {
+            "name": "payer",
+            "type": "pubkey"
+          },
+          {
+            "name": "assets_in",
+            "type": "u64"
+          },
+          {
+            "name": "credited",
+            "type": "u64"
+          },
+          {
+            "name": "shares_burned",
+            "type": "u128"
+          }
+        ]
+      }
+    },
+    {
+      "name": "Supplied",
+      "docs": [
+        "`assets_in` is the requested/computed transfer amount; `credited` is the measured post-CPI",
+        "delta actually recorded (`account-model.md` §6.4) — loan assets are policy-restricted to",
+        "fee-free mints, so the two are expected to be equal, but this is verified, never assumed",
+        "(`instruction-catalogue.md` §12)."
+      ],
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "market",
+            "type": "pubkey"
+          },
+          {
+            "name": "position",
+            "type": "pubkey"
+          },
+          {
+            "name": "owner",
+            "type": "pubkey"
+          },
+          {
+            "name": "assets_in",
+            "type": "u64"
+          },
+          {
+            "name": "credited",
+            "type": "u64"
+          },
+          {
+            "name": "shares_minted",
+            "type": "u128"
+          }
+        ]
+      }
+    },
+    {
+      "name": "Withdrawn",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "market",
+            "type": "pubkey"
+          },
+          {
+            "name": "position",
+            "type": "pubkey"
+          },
+          {
+            "name": "owner",
+            "type": "pubkey"
+          },
+          {
+            "name": "assets_out",
+            "type": "u64"
+          },
+          {
+            "name": "shares_burned",
+            "type": "u128"
+          }
+        ]
+      }
+    }
+  ]
+}

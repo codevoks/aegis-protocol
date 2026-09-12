@@ -1,4 +1,4 @@
-.PHONY: setup build test fmt lint clean bench fuzz demo app \
+.PHONY: setup build test fmt lint clean bench fuzz traceability demo app \
         sdk-install app-install codegen codegen-check vectors vectors-check \
         sdk-test sdk-test-e2e app-build app-typecheck
 
@@ -53,9 +53,20 @@ clean:
 	cargo clean
 	rm -rf .anchor
 
-## Extended invariant fuzz campaign — Phase 10.
+## Extended invariant fuzz campaign — Phase 10. Larger and slower than the bounded campaign
+## `make test` already runs as part of `tests/fuzz.rs`'s default (non-`#[ignore]`d) tests; this
+## target is the manual/nightly-scale run docs/security/mutation-report.md's campaign-statistics
+## section reports evidence from (testing-strategy.md §9: "Extended fuzz campaign | nightly /
+## pre-tag | no (reported)"). Takes on the order of minutes, not seconds -- deliberately not part
+## of the default `make test`/CI path.
 fuzz:
-	@echo "not implemented until Phase 10 (security campaign)"
+	cargo test --test fuzz --offline -- --ignored fuzz_extended_campaign --nocapture
+
+## Phase 10 traceability check, runnable on its own. Already blocking in CI without any workflow
+## change: `.github/workflows/ci.yml`'s `guards` job runs every `scripts/check-*.sh`, and this
+## script's filename matches that glob.
+traceability:
+	./scripts/check-traceability.sh
 
 ## CU benchmarks -> benchmarks/cu.json — Phase 11.
 bench:

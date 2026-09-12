@@ -132,6 +132,10 @@ pub fn handler(ctx: Context<Borrow>, assets: u64, shares: u128) -> Result<()> {
         ctx.accounts.market.loan_decimals,
     )
     .map_err(AegisError::from)?;
+    // A-SOLV-01: adversarially exercised at both of INV-SOLV-01's [GLOBAL] call sites (here and
+    // in `withdraw_collateral`'s debt-bearing path); the stateful fuzzer's F-INV-07 independently
+    // re-derives this same bound from live on-chain state after every borrow
+    // (`aegis-test-kit::invariants::assert_inv_solv_01`, `tests/fuzz/`).
     let within_ltv =
         is_within_max_ltv(cv, dv, ctx.accounts.market.max_ltv).map_err(AegisError::from)?;
     require!(within_ltv, AegisError::ExceedsMaxLtv);

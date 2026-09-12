@@ -60,6 +60,13 @@ solana-clock = "3"
 # toolchain expectations) rather than adding an HTTP client crate, per AGENTS.md §10's preference
 # for the smallest dependency footprint that does the job.
 serde_json = "1"
+# Phase 10, tests/fuzz/ ONLY: the stateful invariant fuzzer's seeded action/amount generator.
+# `rand 0.8.8` is already resolved in Cargo.lock (a transitive dependency of `aegis-math`'s own
+# `proptest` dev-dependency), so promoting it to a direct dev-dependency here adds zero new crates
+# to the supply chain. `StdRng::seed_from_u64` gives the reproducible-from-a-seed property
+# `phase-10-security.md` requires ("all keypairs and the RNG are seeded; every failure must be
+# reproducible and shrinkable from its seed") -- never `rand::thread_rng()` anywhere in the fuzzer.
+rand = "0.8"
 
 # overflow-checks = true is the single most important line in this file (T-16). Release
 # builds do not check arithmetic overflow by default; without this, the entire arithmetic

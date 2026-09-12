@@ -75,6 +75,7 @@ dependencies = [
  "example-liquidator",
  "hostile-callback",
  "litesvm",
+ "rand 0.8.8",
  "serde_json",
  "solana-account",
  "solana-clock",

@@ -125,6 +125,8 @@ pub fn handler(ctx: Context<WithdrawCollateral>, amount: u64) -> Result<()> {
         .map_err(AegisError::from)?;
         let dv = debt_value(debt_assets, loan_band.hi, ctx.accounts.market.loan_decimals)
             .map_err(AegisError::from)?;
+        // A-SOLV-01 / INV-SOLV-01 [GLOBAL]: a debt-bearing withdrawal must never leave the
+        // position under-collateralized.
         let within_ltv =
             is_within_max_ltv(cv, dv, ctx.accounts.market.max_ltv).map_err(AegisError::from)?;
         require!(within_ltv, AegisError::ExceedsMaxLtv);

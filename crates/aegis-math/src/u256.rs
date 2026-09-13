@@ -71,6 +71,18 @@ impl U256 {
     pub fn div_u128(self, d: u128) -> Option<(u128, u128)> {
         debug_assert!(d != 0);
 
+        // Fast path: when the true 256-bit value fits entirely in the low limb (`hi == 0`, the
+        // overwhelmingly common case for this crate's actual WAD-scale inputs -- Phase 11's
+        // measured evidence: `docs/performance-strategy.md` PERF-I2), native `u128` division is
+        // exact and produces the IDENTICAL `(quotient, remainder)` pair the loop below would --
+        // it is not an approximation or a different rounding rule, just the same arithmetic
+        // computed by the compiler's own (hardware-oriented) division instead of a 256-iteration
+        // bit-serial long division. The slow path below remains, byte-for-byte unchanged, as the
+        // exact fallback for the genuinely-256-bit case.
+        if self.hi == 0 {
+            return Some((self.lo / d, self.lo % d));
+        }
+
         let mut remainder: u128 = 0;
         let mut quotient = Self::ZERO;
 

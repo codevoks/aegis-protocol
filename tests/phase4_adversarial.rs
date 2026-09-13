@@ -7,7 +7,7 @@
 use aegis::error::AegisError;
 use aegis_test_kit::{
     assert_aegis_error, create_market, create_spl_mint, create_token_account, deploy,
-    fetch_token_account_base, init_position, initialize_protocol, position_pda,
+    fetch_token_account_base, init_position, initialize_protocol, position_pda, protocol_pda,
     reference_market_args, repay_ix, spl_token_interface, supply, supply_ix, withdraw_ix,
 };
 use anchor_lang::{InstructionData, ToAccountMetas};
@@ -546,6 +546,7 @@ fn supply_rejects_substituted_fee_position() {
         program_id: aegis::ID,
         accounts: aegis::accounts::Supply {
             owner: lender.pubkey(),
+            protocol: protocol_pda().0,
             market: fx.market,
             position,
             fee_position: fake_fee_position,

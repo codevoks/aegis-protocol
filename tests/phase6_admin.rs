@@ -9,8 +9,8 @@ use aegis::error::AegisError;
 use aegis_test_kit::{
     absorb_bad_debt, assert_aegis_error, borrow, create_market, create_spl_mint,
     create_token_account, deploy, deposit_collateral, fetch_market, fetch_position, init_position,
-    initialize_protocol, invariants, liquidate, mint_to, reference_market_args, set_price,
-    spl_token_interface, supply, token_accounts::fetch_token_account_base,
+    initialize_protocol, invariants, liquidate, mint_to, protocol_pda, reference_market_args,
+    set_price, spl_token_interface, supply, token_accounts::fetch_token_account_base,
     withdraw_collateral_fees, PriceFixture,
 };
 use anchor_lang::ToAccountMetas;
@@ -868,6 +868,7 @@ fn a_par_02_no_writable_account_shared_between_two_markets() {
 
     let liquidate_metas_a = aegis::accounts::Liquidate {
         liquidator: liquidator_a,
+        protocol: protocol_pda().0,
         market: fx_a.market,
         position: position_a,
         fee_position: fx_a.fee_position,
@@ -887,6 +888,7 @@ fn a_par_02_no_writable_account_shared_between_two_markets() {
     .to_account_metas(None);
     let liquidate_metas_b = aegis::accounts::Liquidate {
         liquidator: liquidator_b,
+        protocol: protocol_pda().0,
         market: fx_b.market,
         position: position_b,
         fee_position: fx_b.fee_position,

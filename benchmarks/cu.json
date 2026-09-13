@@ -2,211 +2,267 @@
   "measurements": [
     {
       "accounts": 3,
-      "cu": 8415,
+      "cu": 8970,
       "instruction": "initialize_protocol",
       "scenario": "fresh",
       "token_program": "n/a"
     },
     {
       "accounts": 11,
-      "cu": 36489,
+      "cu": 38298,
       "instruction": "create_market",
       "scenario": "fresh",
       "token_program": "spl_token"
     },
     {
       "accounts": 11,
-      "cu": 45104,
+      "cu": 46726,
       "instruction": "create_market",
       "scenario": "fresh",
       "token_program": "token_2022_both_sides"
     },
     {
       "accounts": 5,
-      "cu": 11481,
+      "cu": 12082,
       "instruction": "init_position",
       "scenario": "fresh_market",
       "token_program": "n/a"
     },
     {
       "accounts": 7,
-      "cu": 12708,
+      "cu": 13196,
       "instruction": "deposit_collateral",
       "scenario": "existing_position",
       "token_program": "spl_token"
     },
     {
       "accounts": 7,
-      "cu": 15692,
+      "cu": 16186,
       "instruction": "deposit_collateral",
       "scenario": "existing_position",
       "token_program": "token_2022_both_sides"
     },
     {
-      "accounts": 9,
-      "cu": 13028,
+      "accounts": 10,
+      "cu": 15846,
       "instruction": "withdraw_collateral",
       "scenario": "no_debt",
       "token_program": "spl_token"
     },
     {
-      "accounts": 9,
-      "cu": 39189,
+      "accounts": 10,
+      "cu": 43052,
       "instruction": "withdraw_collateral",
       "scenario": "with_debt_oracle_ltv",
       "token_program": "spl_token"
     },
     {
-      "accounts": 9,
-      "cu": 15953,
+      "accounts": 10,
+      "cu": 18776,
       "instruction": "withdraw_collateral",
       "scenario": "no_debt",
       "token_program": "token_2022_both_sides"
     },
     {
       "accounts": 3,
-      "cu": 5075,
+      "cu": 5334,
       "instruction": "close_position",
       "scenario": "empty_position",
       "token_program": "n/a"
     },
     {
-      "accounts": 8,
-      "cu": 23637,
+      "accounts": 9,
+      "cu": 27158,
       "instruction": "supply",
       "scenario": "existing_market_with_accrued_interest",
       "token_program": "spl_token"
     },
     {
-      "accounts": 8,
-      "cu": 23293,
+      "accounts": 9,
+      "cu": 26789,
       "instruction": "withdraw",
       "scenario": "existing_market_with_accrued_interest",
       "token_program": "spl_token"
     },
     {
-      "accounts": 8,
-      "cu": 25387,
+      "accounts": 9,
+      "cu": 28910,
       "instruction": "supply",
       "scenario": "existing_market_with_accrued_interest",
       "token_program": "token_2022_both_sides"
     },
     {
-      "accounts": 8,
-      "cu": 25037,
+      "accounts": 9,
+      "cu": 28534,
       "instruction": "withdraw",
       "scenario": "existing_market_with_accrued_interest",
       "token_program": "token_2022_both_sides"
     },
     {
-      "accounts": 10,
-      "cu": 46628,
+      "accounts": 11,
+      "cu": 50645,
       "instruction": "borrow",
       "scenario": "healthy_borrow_against_fresh_collateral",
       "token_program": "spl_token"
     },
     {
-      "accounts": 10,
-      "cu": 48360,
+      "accounts": 11,
+      "cu": 52380,
       "instruction": "borrow",
       "scenario": "healthy_borrow_against_fresh_collateral",
       "token_program": "token_2022_both_sides"
     },
     {
       "accounts": 8,
-      "cu": 21175,
+      "cu": 21816,
       "instruction": "repay",
       "scenario": "dt0_partial",
       "token_program": "spl_token"
     },
     {
       "accounts": 8,
-      "cu": 24252,
+      "cu": 25503,
       "instruction": "repay",
       "scenario": "dt_30d_partial",
       "token_program": "spl_token"
     },
     {
       "accounts": 8,
-      "cu": 22926,
+      "cu": 23569,
       "instruction": "repay",
       "scenario": "dt0_partial",
       "token_program": "token_2022_both_sides"
     },
     {
       "accounts": 8,
-      "cu": 26003,
+      "cu": 27256,
       "instruction": "repay",
       "scenario": "dt_30d_partial",
       "token_program": "token_2022_both_sides"
     },
     {
       "accounts": 2,
-      "cu": 9041,
+      "cu": 9320,
       "instruction": "accrue_interest",
       "scenario": "dt0_noop",
       "token_program": "n/a"
     },
     {
       "accounts": 2,
-      "cu": 12118,
+      "cu": 13007,
       "instruction": "accrue_interest",
       "scenario": "dt_30d",
       "token_program": "n/a"
     },
     {
-      "accounts": 16,
-      "cu": 102902,
+      "accounts": 17,
+      "cu": 109109,
       "instruction": "liquidate",
       "scenario": "unclamped_close_factor_partial",
       "token_program": "spl_token"
     },
     {
-      "accounts": 16,
-      "cu": 105118,
+      "accounts": 17,
+      "cu": 111690,
       "instruction": "liquidate",
       "scenario": "clamped_full",
       "token_program": "spl_token"
     },
     {
       "accounts": 3,
-      "cu": 12223,
+      "cu": 12665,
       "instruction": "absorb_bad_debt",
       "scenario": "post_full_liquidation_dust",
       "token_program": "n/a"
     },
     {
       "accounts": 7,
-      "cu": 15523,
+      "cu": 16003,
       "instruction": "withdraw_collateral_fees",
       "scenario": "full_accrued_balance",
       "token_program": "spl_token"
     },
     {
-      "accounts": 16,
-      "cu": 107604,
+      "accounts": 17,
+      "cu": 113813,
       "instruction": "liquidate",
       "scenario": "unclamped_close_factor_partial",
       "token_program": "token_2022_both_sides"
     },
     {
-      "accounts": 16,
-      "cu": 109687,
+      "accounts": 17,
+      "cu": 116304,
       "instruction": "liquidate",
       "scenario": "clamped_full_worst_case",
       "token_program": "token_2022_both_sides"
     },
     {
       "accounts": 7,
-      "cu": 18448,
+      "cu": 18933,
       "instruction": "withdraw_collateral_fees",
       "scenario": "full_accrued_balance",
       "token_program": "token_2022_both_sides"
+    },
+    {
+      "accounts": 2,
+      "cu": 4404,
+      "instruction": "set_pending_admin",
+      "scenario": "fresh_protocol",
+      "token_program": "n/a"
+    },
+    {
+      "accounts": 2,
+      "cu": 4392,
+      "instruction": "accept_admin",
+      "scenario": "fresh_protocol",
+      "token_program": "n/a"
+    },
+    {
+      "accounts": 2,
+      "cu": 4478,
+      "instruction": "set_guardian",
+      "scenario": "fresh_protocol",
+      "token_program": "n/a"
+    },
+    {
+      "accounts": 2,
+      "cu": 4390,
+      "instruction": "set_protocol_pause",
+      "scenario": "admin_sets_one_bit",
+      "token_program": "n/a"
+    },
+    {
+      "accounts": 3,
+      "cu": 8670,
+      "instruction": "set_market_pause",
+      "scenario": "admin_sets_one_bit",
+      "token_program": "n/a"
+    },
+    {
+      "accounts": 7,
+      "cu": 19908,
+      "instruction": "set_market_params",
+      "scenario": "tighten_immediate",
+      "token_program": "n/a"
+    },
+    {
+      "accounts": 6,
+      "cu": 19173,
+      "instruction": "commit_pending_params",
+      "scenario": "at_effective_at",
+      "token_program": "n/a"
+    },
+    {
+      "accounts": 2,
+      "cu": 5871,
+      "instruction": "migrate_protocol_v2",
+      "scenario": "v1_account",
+      "token_program": "n/a"
     }
   ],
   "meta": {
     "anchor_cli": "1.2.0",
-    "commit": "ec97dd93c3f2ca684baceef6cb72325bb2a3c263",
+    "commit": "e566ac48d487f0b4749e2199980ad51e19b62461",
     "mollusk_svm": "0.15.1",
     "rustc": "rustc 1.98.1 (48a229cea 2026-09-01)",
     "solana_cli": "3.1.10"

@@ -97,7 +97,8 @@ fn attacker_owned_fake_protocol_account_is_rejected() {
         fee_recipient: fixed_pubkey(3),
         paused: 0,
         bump,
-        _reserved: [0u8; 64],
+        schema_version: aegis::constants::PROTOCOL_SCHEMA_VERSION,
+        _reserved: [0u8; 63],
     };
     let mut data = Vec::new();
     fake.try_serialize(&mut data)

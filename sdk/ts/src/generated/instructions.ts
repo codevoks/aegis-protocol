@@ -9,7 +9,7 @@ import type { FieldSpec } from '../borshValues.js';
 
 import { buildGenericInstruction } from '../ixEngine.js';
 
-import type { CreateMarketArgs, InitProtocolArgs } from './types.js';
+import type { CreateMarketArgs, InitProtocolArgs, SetMarketParamsArgs } from './types.js';
 
 export interface IxAccountMeta {
   readonly name: string;
@@ -37,6 +37,15 @@ export const INSTRUCTIONS: Record<string, IxDef> = {
     ],
     argsFields: [],
   },
+  "accept_admin": {
+    name: "accept_admin",
+    discriminator: Uint8Array.from([112, 42, 45, 90, 116, 181, 13, 170]),
+    accounts: [
+    { name: "pending_admin", camelName: "pendingAdmin", writable: false, signer: true, optional: false },
+    { name: "protocol", camelName: "protocol", writable: true, signer: false, optional: false },
+    ],
+    argsFields: [],
+  },
   "accrue_interest": {
     name: "accrue_interest",
     discriminator: Uint8Array.from([47, 40, 115, 198, 91, 12, 222, 49]),
@@ -51,6 +60,7 @@ export const INSTRUCTIONS: Record<string, IxDef> = {
     discriminator: Uint8Array.from([228, 253, 131, 202, 207, 116, 89, 18]),
     accounts: [
     { name: "owner", camelName: "owner", writable: false, signer: true, optional: false },
+    { name: "protocol", camelName: "protocol", writable: false, signer: false, optional: false },
     { name: "market", camelName: "market", writable: true, signer: false, optional: false },
     { name: "position", camelName: "position", writable: true, signer: false, optional: false },
     { name: "fee_position", camelName: "feePosition", writable: true, signer: false, optional: false },
@@ -70,6 +80,19 @@ export const INSTRUCTIONS: Record<string, IxDef> = {
     { name: "owner", camelName: "owner", writable: true, signer: true, optional: false },
     { name: "market", camelName: "market", writable: false, signer: false, optional: false },
     { name: "position", camelName: "position", writable: true, signer: false, optional: false },
+    ],
+    argsFields: [],
+  },
+  "commit_pending_params": {
+    name: "commit_pending_params",
+    discriminator: Uint8Array.from([69, 179, 237, 67, 52, 11, 247, 63]),
+    accounts: [
+    { name: "payer", camelName: "payer", writable: false, signer: true, optional: false },
+    { name: "protocol", camelName: "protocol", writable: false, signer: false, optional: false },
+    { name: "admin", camelName: "admin", writable: true, signer: false, optional: false },
+    { name: "market", camelName: "market", writable: true, signer: false, optional: false },
+    { name: "fee_position", camelName: "feePosition", writable: true, signer: false, optional: false },
+    { name: "pending_market_params", camelName: "pendingMarketParams", writable: true, signer: false, optional: false },
     ],
     argsFields: [],
   },
@@ -132,6 +155,7 @@ export const INSTRUCTIONS: Record<string, IxDef> = {
     discriminator: Uint8Array.from([223, 179, 226, 125, 48, 46, 39, 74]),
     accounts: [
     { name: "liquidator", camelName: "liquidator", writable: true, signer: true, optional: false },
+    { name: "protocol", camelName: "protocol", writable: false, signer: false, optional: false },
     { name: "market", camelName: "market", writable: true, signer: false, optional: false },
     { name: "position", camelName: "position", writable: true, signer: false, optional: false },
     { name: "fee_position", camelName: "feePosition", writable: true, signer: false, optional: false },
@@ -149,6 +173,15 @@ export const INSTRUCTIONS: Record<string, IxDef> = {
     { name: "callback_collateral_account", camelName: "callbackCollateralAccount", writable: true, signer: false, optional: true },
     ],
     argsFields: [{ rawName: "repay_assets", camelName: "repayAssets", kind: "u64" }, { rawName: "seize_collateral", camelName: "seizeCollateral", kind: "u64" }, { rawName: "callback_data", camelName: "callbackData", kind: "bytes" }],
+  },
+  "migrate_protocol_v2": {
+    name: "migrate_protocol_v2",
+    discriminator: Uint8Array.from([54, 91, 238, 148, 114, 115, 127, 154]),
+    accounts: [
+    { name: "admin", camelName: "admin", writable: false, signer: true, optional: false },
+    { name: "protocol", camelName: "protocol", writable: true, signer: false, optional: false },
+    ],
+    argsFields: [],
   },
   "ping": {
     name: "ping",
@@ -172,11 +205,63 @@ export const INSTRUCTIONS: Record<string, IxDef> = {
     ],
     argsFields: [{ rawName: "assets", camelName: "assets", kind: "u64" }, { rawName: "shares", camelName: "shares", kind: "u128" }],
   },
+  "set_guardian": {
+    name: "set_guardian",
+    discriminator: Uint8Array.from([147, 243, 50, 121, 154, 164, 50, 30]),
+    accounts: [
+    { name: "admin", camelName: "admin", writable: false, signer: true, optional: false },
+    { name: "protocol", camelName: "protocol", writable: true, signer: false, optional: false },
+    ],
+    argsFields: [{ rawName: "new_guardian", camelName: "newGuardian", kind: "pubkey" }],
+  },
+  "set_market_params": {
+    name: "set_market_params",
+    discriminator: Uint8Array.from([131, 124, 191, 102, 22, 237, 251, 58]),
+    accounts: [
+    { name: "admin", camelName: "admin", writable: true, signer: true, optional: false },
+    { name: "protocol", camelName: "protocol", writable: false, signer: false, optional: false },
+    { name: "market", camelName: "market", writable: true, signer: false, optional: false },
+    { name: "fee_position", camelName: "feePosition", writable: true, signer: false, optional: false },
+    { name: "new_fee_position", camelName: "newFeePosition", writable: false, signer: false, optional: true },
+    { name: "pending_market_params", camelName: "pendingMarketParams", writable: true, signer: false, optional: false },
+    { name: "system_program", camelName: "systemProgram", writable: false, signer: false, optional: false },
+    ],
+    argsFields: [{ rawName: "args", camelName: "args", kind: "defined", definedName: "SetMarketParamsArgs" }],
+  },
+  "set_market_pause": {
+    name: "set_market_pause",
+    discriminator: Uint8Array.from([118, 203, 96, 59, 170, 213, 38, 101]),
+    accounts: [
+    { name: "authority", camelName: "authority", writable: false, signer: true, optional: false },
+    { name: "protocol", camelName: "protocol", writable: false, signer: false, optional: false },
+    { name: "market", camelName: "market", writable: true, signer: false, optional: false },
+    ],
+    argsFields: [{ rawName: "flags", camelName: "flags", kind: "u8" }],
+  },
+  "set_pending_admin": {
+    name: "set_pending_admin",
+    discriminator: Uint8Array.from([248, 204, 95, 229, 240, 21, 219, 3]),
+    accounts: [
+    { name: "admin", camelName: "admin", writable: false, signer: true, optional: false },
+    { name: "protocol", camelName: "protocol", writable: true, signer: false, optional: false },
+    ],
+    argsFields: [{ rawName: "new_admin", camelName: "newAdmin", kind: "pubkey" }],
+  },
+  "set_protocol_pause": {
+    name: "set_protocol_pause",
+    discriminator: Uint8Array.from([19, 235, 135, 250, 184, 114, 209, 89]),
+    accounts: [
+    { name: "authority", camelName: "authority", writable: false, signer: true, optional: false },
+    { name: "protocol", camelName: "protocol", writable: true, signer: false, optional: false },
+    ],
+    argsFields: [{ rawName: "flags", camelName: "flags", kind: "u8" }],
+  },
   "supply": {
     name: "supply",
     discriminator: Uint8Array.from([81, 67, 116, 61, 250, 209, 5, 198]),
     accounts: [
     { name: "owner", camelName: "owner", writable: true, signer: true, optional: false },
+    { name: "protocol", camelName: "protocol", writable: false, signer: false, optional: false },
     { name: "market", camelName: "market", writable: true, signer: false, optional: false },
     { name: "position", camelName: "position", writable: true, signer: false, optional: false },
     { name: "fee_position", camelName: "feePosition", writable: true, signer: false, optional: false },
@@ -192,6 +277,7 @@ export const INSTRUCTIONS: Record<string, IxDef> = {
     discriminator: Uint8Array.from([183, 18, 70, 156, 148, 109, 161, 34]),
     accounts: [
     { name: "owner", camelName: "owner", writable: true, signer: true, optional: false },
+    { name: "protocol", camelName: "protocol", writable: false, signer: false, optional: false },
     { name: "market", camelName: "market", writable: true, signer: false, optional: false },
     { name: "position", camelName: "position", writable: true, signer: false, optional: false },
     { name: "fee_position", camelName: "feePosition", writable: true, signer: false, optional: false },
@@ -207,6 +293,7 @@ export const INSTRUCTIONS: Record<string, IxDef> = {
     discriminator: Uint8Array.from([115, 135, 168, 106, 139, 214, 138, 150]),
     accounts: [
     { name: "owner", camelName: "owner", writable: false, signer: true, optional: false },
+    { name: "protocol", camelName: "protocol", writable: false, signer: false, optional: false },
     { name: "market", camelName: "market", writable: false, signer: false, optional: false },
     { name: "position", camelName: "position", writable: true, signer: false, optional: false },
     { name: "collateral_vault", camelName: "collateralVault", writable: true, signer: false, optional: false },
@@ -244,6 +331,15 @@ export function buildAbsorbBadDebtInstruction(programId: Address, accounts: Abso
   return buildGenericInstruction(programId, "absorb_bad_debt", accounts as unknown as Record<string, Address | undefined>, {});
 }
 
+export interface AcceptAdminAccounts {
+  pendingAdmin: Address;
+  protocol: Address;
+}
+
+export function buildAcceptAdminInstruction(programId: Address, accounts: AcceptAdminAccounts): Instruction {
+  return buildGenericInstruction(programId, "accept_admin", accounts as unknown as Record<string, Address | undefined>, {});
+}
+
 export interface AccrueInterestAccounts {
   market: Address;
   feePosition: Address;
@@ -255,6 +351,7 @@ export function buildAccrueInterestInstruction(programId: Address, accounts: Acc
 
 export interface BorrowAccounts {
   owner: Address;
+  protocol: Address;
   market: Address;
   position: Address;
   feePosition: Address;
@@ -283,6 +380,19 @@ export interface ClosePositionAccounts {
 
 export function buildClosePositionInstruction(programId: Address, accounts: ClosePositionAccounts): Instruction {
   return buildGenericInstruction(programId, "close_position", accounts as unknown as Record<string, Address | undefined>, {});
+}
+
+export interface CommitPendingParamsAccounts {
+  payer: Address;
+  protocol: Address;
+  admin: Address;
+  market: Address;
+  feePosition: Address;
+  pendingMarketParams: Address;
+}
+
+export function buildCommitPendingParamsInstruction(programId: Address, accounts: CommitPendingParamsAccounts): Instruction {
+  return buildGenericInstruction(programId, "commit_pending_params", accounts as unknown as Record<string, Address | undefined>, {});
 }
 
 export interface CreateMarketAccounts {
@@ -345,6 +455,7 @@ export function buildInitializeProtocolInstruction(programId: Address, accounts:
 
 export interface LiquidateAccounts {
   liquidator: Address;
+  protocol: Address;
   market: Address;
   position: Address;
   feePosition: Address;
@@ -372,6 +483,15 @@ export function buildLiquidateInstruction(programId: Address, accounts: Liquidat
   return buildGenericInstruction(programId, "liquidate", accounts as unknown as Record<string, Address | undefined>, args as unknown as Record<string, unknown>, remainingAccounts);
 }
 
+export interface MigrateProtocolV2Accounts {
+  admin: Address;
+  protocol: Address;
+}
+
+export function buildMigrateProtocolV2Instruction(programId: Address, accounts: MigrateProtocolV2Accounts): Instruction {
+  return buildGenericInstruction(programId, "migrate_protocol_v2", accounts as unknown as Record<string, Address | undefined>, {});
+}
+
 export interface RepayAccounts {
   payer: Address;
   market: Address;
@@ -392,8 +512,76 @@ export function buildRepayInstruction(programId: Address, accounts: RepayAccount
   return buildGenericInstruction(programId, "repay", accounts as unknown as Record<string, Address | undefined>, args as unknown as Record<string, unknown>);
 }
 
+export interface SetGuardianAccounts {
+  admin: Address;
+  protocol: Address;
+}
+
+export interface SetGuardianArgs {
+  newGuardian: Address;
+}
+
+export function buildSetGuardianInstruction(programId: Address, accounts: SetGuardianAccounts, args: SetGuardianArgs): Instruction {
+  return buildGenericInstruction(programId, "set_guardian", accounts as unknown as Record<string, Address | undefined>, args as unknown as Record<string, unknown>);
+}
+
+export interface SetMarketParamsAccounts {
+  admin: Address;
+  protocol: Address;
+  market: Address;
+  feePosition: Address;
+  newFeePosition?: Address;
+  pendingMarketParams: Address;
+  systemProgram: Address;
+}
+
+export function buildSetMarketParamsInstruction(programId: Address, accounts: SetMarketParamsAccounts, args: SetMarketParamsArgs): Instruction {
+  return buildGenericInstruction(programId, "set_market_params", accounts as unknown as Record<string, Address | undefined>, { args: args });
+}
+
+export interface SetMarketPauseAccounts {
+  authority: Address;
+  protocol: Address;
+  market: Address;
+}
+
+export interface SetMarketPauseArgs {
+  flags: number;
+}
+
+export function buildSetMarketPauseInstruction(programId: Address, accounts: SetMarketPauseAccounts, args: SetMarketPauseArgs): Instruction {
+  return buildGenericInstruction(programId, "set_market_pause", accounts as unknown as Record<string, Address | undefined>, args as unknown as Record<string, unknown>);
+}
+
+export interface SetPendingAdminAccounts {
+  admin: Address;
+  protocol: Address;
+}
+
+export interface SetPendingAdminArgs {
+  newAdmin: Address;
+}
+
+export function buildSetPendingAdminInstruction(programId: Address, accounts: SetPendingAdminAccounts, args: SetPendingAdminArgs): Instruction {
+  return buildGenericInstruction(programId, "set_pending_admin", accounts as unknown as Record<string, Address | undefined>, args as unknown as Record<string, unknown>);
+}
+
+export interface SetProtocolPauseAccounts {
+  authority: Address;
+  protocol: Address;
+}
+
+export interface SetProtocolPauseArgs {
+  flags: number;
+}
+
+export function buildSetProtocolPauseInstruction(programId: Address, accounts: SetProtocolPauseAccounts, args: SetProtocolPauseArgs): Instruction {
+  return buildGenericInstruction(programId, "set_protocol_pause", accounts as unknown as Record<string, Address | undefined>, args as unknown as Record<string, unknown>);
+}
+
 export interface SupplyAccounts {
   owner: Address;
+  protocol: Address;
   market: Address;
   position: Address;
   feePosition: Address;
@@ -414,6 +602,7 @@ export function buildSupplyInstruction(programId: Address, accounts: SupplyAccou
 
 export interface WithdrawAccounts {
   owner: Address;
+  protocol: Address;
   market: Address;
   position: Address;
   feePosition: Address;
@@ -434,6 +623,7 @@ export function buildWithdrawInstruction(programId: Address, accounts: WithdrawA
 
 export interface WithdrawCollateralAccounts {
   owner: Address;
+  protocol: Address;
   market: Address;
   position: Address;
   collateralVault: Address;

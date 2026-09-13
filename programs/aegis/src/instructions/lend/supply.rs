@@ -9,15 +9,14 @@
 //! is **verified, not assumed**: a mismatch aborts with `VaultAccountingError` rather than
 //! silently minting shares against a different figure than what actually arrived.
 //!
-//! No pause check: `set_market_pause`/`set_protocol_pause` are Phase 12 scope and, before they
-//! exist, no instruction can ever set a pause bit to nonzero — a check today would be dead code
-//! with no way to exercise it honestly (same precedent `withdraw_collateral` set in Phase 3).
+//! Phase 12: not paused (`PAUSE_SUPPLY`) — checked first, before accrual, against both
+//! `protocol.paused` and `market.paused` (`guards::require_pause_bit_clear`).
 
-use crate::constants::{LOAN_VAULT_SEED, MARKET_SEED, POSITION_SEED};
+use crate::constants::{LOAN_VAULT_SEED, MARKET_SEED, PAUSE_SUPPLY, POSITION_SEED, PROTOCOL_SEED};
 use crate::error::AegisError;
 use crate::events::Supplied;
-use crate::guards::require_exactly_one_amount;
-use crate::state::{Market, Position};
+use crate::guards::{require_exactly_one_amount, require_pause_bit_clear};
+use crate::state::{Market, Position, Protocol};
 use crate::token::transfer::transfer_checked_in;
 use aegis_math::{to_assets_up, to_shares_down};
 use anchor_lang::prelude::*;
@@ -30,6 +29,12 @@ pub struct Supply<'info> {
     /// `account-model.md` §5.1 requires an owner signature for `supply`).
     #[account(mut)]
     pub owner: Signer<'info>,
+
+    #[account(
+        seeds = [PROTOCOL_SEED],
+        bump = protocol.bump,
+    )]
+    pub protocol: Account<'info, Protocol>,
 
     #[account(
         mut,
@@ -82,6 +87,12 @@ pub struct Supply<'info> {
 }
 
 pub fn handler(ctx: Context<Supply>, assets: u64, shares: u128) -> Result<()> {
+    require_pause_bit_clear(
+        ctx.accounts.protocol.paused,
+        ctx.accounts.market.paused,
+        PAUSE_SUPPLY,
+        AegisError::OperationPaused,
+    )?;
     require_exactly_one_amount(assets, shares)?;
     require_keys_eq!(
         ctx.accounts.loan_token_program.key(),

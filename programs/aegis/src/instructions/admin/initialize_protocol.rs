@@ -1,6 +1,6 @@
 //! `initialize_protocol` — creates the singleton `Protocol` account (`instruction-catalogue.md` §1).
 
-use crate::constants::PROTOCOL_SEED;
+use crate::constants::{PROTOCOL_SCHEMA_VERSION, PROTOCOL_SEED};
 use crate::error::AegisError;
 use crate::events::ProtocolInitialized;
 use crate::guards::require_non_default_pubkey;
@@ -44,7 +44,8 @@ pub fn handler(ctx: Context<InitializeProtocol>, args: InitProtocolArgs) -> Resu
     protocol.fee_recipient = args.fee_recipient;
     protocol.paused = 0;
     protocol.bump = ctx.bumps.protocol;
-    protocol._reserved = [0u8; 64];
+    protocol.schema_version = PROTOCOL_SCHEMA_VERSION;
+    protocol._reserved = [0u8; 63];
 
     emit!(ProtocolInitialized {
         protocol: protocol.key(),

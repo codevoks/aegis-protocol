@@ -6,11 +6,13 @@
 //! to `loan_vault` never manufacture protocol-accounted liquidity rights (INV-CUS-08): this check
 //! is against the market's own accounting scalars, never the vault's raw token balance.
 
-use crate::constants::{LOAN_VAULT_SEED, MARKET_SEED, POSITION_SEED};
+use crate::constants::{
+    LOAN_VAULT_SEED, MARKET_SEED, PAUSE_WITHDRAW, POSITION_SEED, PROTOCOL_SEED,
+};
 use crate::error::AegisError;
 use crate::events::Withdrawn;
-use crate::guards::require_exactly_one_amount;
-use crate::state::{Market, Position};
+use crate::guards::{require_exactly_one_amount, require_pause_bit_clear};
+use crate::state::{Market, Position, Protocol};
 use crate::token::transfer::transfer_checked_out;
 use aegis_math::{to_assets_down, to_shares_up};
 use anchor_lang::prelude::*;
@@ -20,6 +22,12 @@ use anchor_spl::token_interface::{Mint, TokenAccount, TokenInterface};
 pub struct Withdraw<'info> {
     #[account(mut)]
     pub owner: Signer<'info>,
+
+    #[account(
+        seeds = [PROTOCOL_SEED],
+        bump = protocol.bump,
+    )]
+    pub protocol: Account<'info, Protocol>,
 
     #[account(
         mut,
@@ -69,6 +77,12 @@ pub struct Withdraw<'info> {
 }
 
 pub fn handler(ctx: Context<Withdraw>, assets: u64, shares: u128) -> Result<()> {
+    require_pause_bit_clear(
+        ctx.accounts.protocol.paused,
+        ctx.accounts.market.paused,
+        PAUSE_WITHDRAW,
+        AegisError::OperationPaused,
+    )?;
     require_exactly_one_amount(assets, shares)?;
     require_keys_eq!(
         ctx.accounts.loan_token_program.key(),

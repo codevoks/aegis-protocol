@@ -202,6 +202,7 @@ export default function DemoPage() {
         programId,
         {
           owner: signer.address,
+          protocol,
           market,
           position: await positionPda(programId, market, signer.address),
           feePosition,
@@ -272,6 +273,7 @@ export default function DemoPage() {
           programId,
           {
             owner: demoBorrower.address,
+            protocol,
             market,
             position: bPosition,
             feePosition,
@@ -365,6 +367,7 @@ export default function DemoPage() {
           programId,
           {
             liquidator: signer.address,
+            protocol: await protocolPda(programId),
             market: marketAddress,
             position: borrowerPosition,
             feePosition: await positionPda(programId, marketAddress, market.feeRecipient),

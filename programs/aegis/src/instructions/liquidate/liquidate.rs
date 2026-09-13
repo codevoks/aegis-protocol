@@ -32,12 +32,15 @@
 //!   The callback's return value and any instruction-data claim it makes are never trusted for
 //!   this — only the measured vault delta is.
 
-use crate::constants::{COLLATERAL_VAULT_SEED, LOAN_VAULT_SEED, MARKET_SEED, POSITION_SEED};
+use crate::constants::{
+    COLLATERAL_VAULT_SEED, LOAN_VAULT_SEED, MARKET_SEED, PAUSE_LIQUIDATE, POSITION_SEED,
+    PROTOCOL_SEED,
+};
 use crate::error::AegisError;
 use crate::events::Liquidated;
-use crate::guards::require_exactly_one_u64;
+use crate::guards::{require_exactly_one_u64, require_pause_bit_clear};
 use crate::oracle::{self, PriceBand};
-use crate::state::{Market, Position};
+use crate::state::{Market, Position, Protocol};
 use crate::token::transfer::{transfer_checked_in, transfer_checked_out};
 use aegis_math::{
     collateral_value, compute_liquidation_by_repay, compute_liquidation_by_seize, debt_value,
@@ -55,6 +58,20 @@ pub struct Liquidate<'info> {
     #[account(mut)]
     pub liquidator: Signer<'info>,
 
+    // Boxed: `Liquidate` already carries the most accounts of any instruction in this program
+    // (14 fixed + 2 optional callback accounts); a real, Docker-verified build
+    // (`solana-verify build`, a stricter/different toolchain than this repo's default local
+    // `cargo build-sbf`) measured `try_accounts` exceeding the 4096-byte SBF stack-frame limit by
+    // 448 bytes the one time `protocol` was added unboxed here -- confirmed empirically, not
+    // theoretically (`docs/project-status.md` Phase 12 §6). Every other pausable instruction's
+    // unboxed `protocol` field compiled cleanly under the same strict build; only this one needed
+    // it.
+    #[account(
+        seeds = [PROTOCOL_SEED],
+        bump = protocol.bump,
+    )]
+    pub protocol: Box<Account<'info, Protocol>>,
+
     #[account(
         mut,
         seeds = [
@@ -68,12 +85,14 @@ pub struct Liquidate<'info> {
     pub market: Box<Account<'info, Market>>,
 
     /// No `has_one = owner` -- the liquidator need not be, and is never required to be, the
-    /// position owner.
+    /// position owner. Boxed for the same stack-frame reason as `protocol` above -- confirmed
+    /// necessary empirically: boxing `protocol` alone still left `try_accounts` 64 bytes over the
+    /// 4096-byte SBF limit under the strict `solana-verify build` toolchain.
     #[account(
         mut,
         has_one = market @ AegisError::PositionMarketMismatch,
     )]
-    pub position: Account<'info, Position>,
+    pub position: Box<Account<'info, Position>>,
 
     #[account(
         mut,
@@ -267,6 +286,14 @@ pub fn handler<'info>(
     seize_collateral: u64,
     callback_data: Vec<u8>,
 ) -> Result<()> {
+    // Phase 12: not paused (LIQUIDATE), checked first.
+    require_pause_bit_clear(
+        ctx.accounts.protocol.paused,
+        ctx.accounts.market.paused,
+        PAUSE_LIQUIDATE,
+        AegisError::OperationPaused,
+    )?;
+
     // Phase 8 / ADR-0013: checked unconditionally, before anything else, in both branches. This
     // is always 0 outside an active callback CPI, so it never changes observable Phase 6 behavior
     // for a no-callback call (I-LIQ-CB-02) -- it is the Aegis-level defense that holds regardless

@@ -11,12 +11,12 @@
 //! operation in [`handler`], strictly before `accrue_mut` or any account write, so a failed
 //! oracle check leaves no state modified.
 
-use crate::constants::{LOAN_VAULT_SEED, MARKET_SEED, POSITION_SEED};
+use crate::constants::{LOAN_VAULT_SEED, MARKET_SEED, PAUSE_BORROW, POSITION_SEED, PROTOCOL_SEED};
 use crate::error::AegisError;
 use crate::events::Borrowed;
-use crate::guards::require_exactly_one_amount;
+use crate::guards::{require_exactly_one_amount, require_pause_bit_clear};
 use crate::oracle;
-use crate::state::{Market, Position};
+use crate::state::{Market, Position, Protocol};
 use crate::token::transfer::transfer_checked_out;
 use aegis_math::{collateral_value, debt_value, is_within_max_ltv, to_assets_up, to_shares_up};
 use anchor_lang::prelude::*;
@@ -25,6 +25,12 @@ use anchor_spl::token_interface::{Mint, TokenAccount, TokenInterface};
 #[derive(Accounts)]
 pub struct Borrow<'info> {
     pub owner: Signer<'info>,
+
+    #[account(
+        seeds = [PROTOCOL_SEED],
+        bump = protocol.bump,
+    )]
+    pub protocol: Account<'info, Protocol>,
 
     #[account(
         mut,
@@ -82,6 +88,12 @@ pub struct Borrow<'info> {
 }
 
 pub fn handler(ctx: Context<Borrow>, assets: u64, shares: u128) -> Result<()> {
+    require_pause_bit_clear(
+        ctx.accounts.protocol.paused,
+        ctx.accounts.market.paused,
+        PAUSE_BORROW,
+        AegisError::OperationPaused,
+    )?;
     require_exactly_one_amount(assets, shares)?;
     require_keys_eq!(
         ctx.accounts.loan_token_program.key(),

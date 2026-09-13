@@ -52,6 +52,35 @@ pub fn program_bytes() -> &'static [u8] {
     include_bytes!(concat!(env!("CARGO_TARGET_TMPDIR"), "/../deploy/aegis.so"))
 }
 
+/// Phase 12: the reference market's own risk/IRM/oracle parameters, restated as
+/// `SetMarketParamsArgs` (mirrors `reference_market_args`'s values exactly) -- passing this
+/// verbatim to `set_market_params` is a legal, tightening (vacuously: no change) no-op.
+pub fn reference_set_market_params_args(
+    fee_recipient: Pubkey,
+) -> aegis::instructions::admin::SetMarketParamsArgs {
+    aegis::instructions::admin::SetMarketParamsArgs {
+        oracle_kind: 0,
+        collateral_feed_id: COLLATERAL_FEED_ID,
+        loan_feed_id: LOAN_FEED_ID,
+        max_price_age_secs: 60,
+        max_conf_bps: 100,
+        max_ltv: 750_000_000_000_000_000,
+        liq_threshold: 800_000_000_000_000_000,
+        liq_bonus: 50_000_000_000_000_000,
+        close_factor: 500_000_000_000_000_000,
+        full_liq_hf: 950_000_000_000_000_000,
+        liq_protocol_fee: 100_000_000_000_000_000,
+        fee: 100_000_000_000_000_000,
+        min_debt: 10_000_000,
+        base_rate_ps: 0,
+        slope1_ps: 0,
+        slope2_ps: 0,
+        u_kink: 800_000_000_000_000_000,
+        max_rate_ps: 1_000_000_000_000_000_000,
+        fee_recipient,
+    }
+}
+
 /// Which token program each side of a market uses -- the two variants every applicable
 /// instruction is benchmarked under (phase-11-performance.md #7).
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]

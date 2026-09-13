@@ -14,7 +14,7 @@
 set -euo pipefail
 cd "$(dirname "${BASH_SOURCE[0]}")/.."
 
-MAX_COMPLETED_PHASE=11
+MAX_COMPLETED_PHASE=12
 DOC="docs/invariants.md"
 # Deliberately narrow, real source paths only -- never the whole `sdk/`/`bots/` trees, whose
 # `node_modules` alone are 10000+ files that would make this script slow for no benefit (no

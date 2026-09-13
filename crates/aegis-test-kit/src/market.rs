@@ -87,6 +87,14 @@ pub fn loan_vault_pda(market: &Pubkey) -> (Pubkey, u8) {
     )
 }
 
+/// Phase 12: `PendingMarketParams` PDA (`PDA([b"pending_params", market])`).
+pub fn pending_market_params_pda(market: &Pubkey) -> (Pubkey, u8) {
+    Pubkey::find_program_address(
+        &[aegis::constants::PENDING_PARAMS_SEED, market.as_ref()],
+        &aegis::ID,
+    )
+}
+
 // --- reference parameter set (economic-model.md §5.1) ---
 
 /// SOL/USDC reference risk, IRM and oracle configuration from `economic-model.md` §5.1, with the
@@ -376,6 +384,7 @@ pub fn withdraw_collateral_ix(
         program_id: aegis::ID,
         accounts: aegis::accounts::WithdrawCollateral {
             owner: *owner,
+            protocol: protocol_pda().0,
             market,
             position,
             collateral_vault,
@@ -463,6 +472,7 @@ pub fn supply_ix(
         program_id: aegis::ID,
         accounts: aegis::accounts::Supply {
             owner: *owner,
+            protocol: protocol_pda().0,
             market,
             position,
             fee_position,
@@ -524,6 +534,7 @@ pub fn withdraw_ix(
         program_id: aegis::ID,
         accounts: aegis::accounts::Withdraw {
             owner: *owner,
+            protocol: protocol_pda().0,
             market,
             position,
             fee_position,
@@ -587,6 +598,7 @@ pub fn borrow_ix(
         program_id: aegis::ID,
         accounts: aegis::accounts::Borrow {
             owner: *owner,
+            protocol: protocol_pda().0,
             market,
             position,
             fee_position,
@@ -751,6 +763,7 @@ pub fn liquidate_ix(
         program_id: aegis::ID,
         accounts: aegis::accounts::Liquidate {
             liquidator: *liquidator,
+            protocol: protocol_pda().0,
             market,
             position,
             fee_position,
@@ -805,6 +818,7 @@ pub fn liquidate_with_callback_ix(
 ) -> Instruction {
     let mut accounts = aegis::accounts::Liquidate {
         liquidator: *liquidator,
+        protocol: protocol_pda().0,
         market,
         position,
         fee_position,
@@ -1085,4 +1099,249 @@ pub fn fetch_position(svm: &LiteSVM, position: &Pubkey) -> Position {
         .get_account(position)
         .expect("position account must exist");
     Position::try_deserialize(&mut account.data.as_slice()).expect("valid Position account")
+}
+
+pub fn fetch_pending_market_params(
+    svm: &LiteSVM,
+    pending_market_params: &Pubkey,
+) -> aegis::state::PendingMarketParams {
+    let account = svm
+        .get_account(pending_market_params)
+        .expect("pending_market_params account must exist");
+    aegis::state::PendingMarketParams::try_deserialize(&mut account.data.as_slice())
+        .expect("valid PendingMarketParams account")
+}
+
+/// `None` iff no `PendingMarketParams` account currently exists for `market` (uninitialized,
+/// system-owned) — distinct from an account that exists but errors to deserialize.
+pub fn try_fetch_pending_market_params(
+    svm: &LiteSVM,
+    market: &Pubkey,
+) -> Option<aegis::state::PendingMarketParams> {
+    let (pending, _) = pending_market_params_pda(market);
+    let account = svm.get_account(&pending)?;
+    if account.owner == anchor_lang::solana_program::system_program::ID && account.lamports == 0 {
+        return None;
+    }
+    Some(
+        aegis::state::PendingMarketParams::try_deserialize(&mut account.data.as_slice())
+            .expect("valid PendingMarketParams account"),
+    )
+}
+
+// =====================================================================================
+// Phase 12: governance, upgrades, and migrations
+// =====================================================================================
+
+// --- set_pending_admin / accept_admin ---
+
+pub fn set_pending_admin_ix(admin: &Pubkey, new_admin: Pubkey) -> Instruction {
+    let (protocol, _) = protocol_pda();
+    Instruction {
+        program_id: aegis::ID,
+        accounts: aegis::accounts::SetPendingAdmin {
+            admin: *admin,
+            protocol,
+        }
+        .to_account_metas(None),
+        data: aegis::instruction::SetPendingAdmin { new_admin }.data(),
+    }
+}
+
+pub fn set_pending_admin(
+    svm: &mut LiteSVM,
+    admin: &Keypair,
+    new_admin: Pubkey,
+) -> TransactionResult {
+    let ix = set_pending_admin_ix(&admin.pubkey(), new_admin);
+    send(svm, admin, &[], ix)
+}
+
+pub fn accept_admin_ix(pending_admin: &Pubkey) -> Instruction {
+    let (protocol, _) = protocol_pda();
+    Instruction {
+        program_id: aegis::ID,
+        accounts: aegis::accounts::AcceptAdmin {
+            pending_admin: *pending_admin,
+            protocol,
+        }
+        .to_account_metas(None),
+        data: aegis::instruction::AcceptAdmin {}.data(),
+    }
+}
+
+pub fn accept_admin(svm: &mut LiteSVM, pending_admin: &Keypair) -> TransactionResult {
+    let ix = accept_admin_ix(&pending_admin.pubkey());
+    send(svm, pending_admin, &[], ix)
+}
+
+// --- set_guardian ---
+
+pub fn set_guardian_ix(admin: &Pubkey, new_guardian: Pubkey) -> Instruction {
+    let (protocol, _) = protocol_pda();
+    Instruction {
+        program_id: aegis::ID,
+        accounts: aegis::accounts::SetGuardian {
+            admin: *admin,
+            protocol,
+        }
+        .to_account_metas(None),
+        data: aegis::instruction::SetGuardian { new_guardian }.data(),
+    }
+}
+
+pub fn set_guardian(svm: &mut LiteSVM, admin: &Keypair, new_guardian: Pubkey) -> TransactionResult {
+    let ix = set_guardian_ix(&admin.pubkey(), new_guardian);
+    send(svm, admin, &[], ix)
+}
+
+// --- set_protocol_pause / set_market_pause ---
+
+pub fn set_protocol_pause_ix(authority: &Pubkey, flags: u8) -> Instruction {
+    let (protocol, _) = protocol_pda();
+    Instruction {
+        program_id: aegis::ID,
+        accounts: aegis::accounts::SetProtocolPause {
+            authority: *authority,
+            protocol,
+        }
+        .to_account_metas(None),
+        data: aegis::instruction::SetProtocolPause { flags }.data(),
+    }
+}
+
+pub fn set_protocol_pause(svm: &mut LiteSVM, authority: &Keypair, flags: u8) -> TransactionResult {
+    let ix = set_protocol_pause_ix(&authority.pubkey(), flags);
+    send(svm, authority, &[], ix)
+}
+
+pub fn set_market_pause_ix(authority: &Pubkey, market: Pubkey, flags: u8) -> Instruction {
+    let (protocol, _) = protocol_pda();
+    Instruction {
+        program_id: aegis::ID,
+        accounts: aegis::accounts::SetMarketPause {
+            authority: *authority,
+            protocol,
+            market,
+        }
+        .to_account_metas(None),
+        data: aegis::instruction::SetMarketPause { flags }.data(),
+    }
+}
+
+pub fn set_market_pause(
+    svm: &mut LiteSVM,
+    authority: &Keypair,
+    market: Pubkey,
+    flags: u8,
+) -> TransactionResult {
+    let ix = set_market_pause_ix(&authority.pubkey(), market, flags);
+    send(svm, authority, &[], ix)
+}
+
+// --- set_market_params / commit_pending_params ---
+
+/// `new_fee_position` is only required (and only actually validated on-chain) when
+/// `args.fee_recipient` differs from the market's current `fee_recipient` -- pass `None` when it
+/// is unchanged.
+#[allow(clippy::too_many_arguments)]
+pub fn set_market_params_ix(
+    admin: &Pubkey,
+    market: Pubkey,
+    fee_position: Pubkey,
+    new_fee_position: Option<Pubkey>,
+    args: aegis::instructions::admin::SetMarketParamsArgs,
+) -> Instruction {
+    let (protocol, _) = protocol_pda();
+    let (pending_market_params, _) = pending_market_params_pda(&market);
+    Instruction {
+        program_id: aegis::ID,
+        accounts: aegis::accounts::SetMarketParams {
+            admin: *admin,
+            protocol,
+            market,
+            fee_position,
+            new_fee_position,
+            pending_market_params,
+            system_program: system_program::ID,
+        }
+        .to_account_metas(None),
+        data: aegis::instruction::SetMarketParams { args }.data(),
+    }
+}
+
+#[allow(clippy::too_many_arguments)]
+pub fn set_market_params(
+    svm: &mut LiteSVM,
+    admin: &Keypair,
+    market: Pubkey,
+    fee_position: Pubkey,
+    new_fee_position: Option<Pubkey>,
+    args: aegis::instructions::admin::SetMarketParamsArgs,
+) -> TransactionResult {
+    let ix = set_market_params_ix(
+        &admin.pubkey(),
+        market,
+        fee_position,
+        new_fee_position,
+        args,
+    );
+    send_priced(svm, admin, &[], ix)
+}
+
+/// `fee_position` must be `PDA(market, market.fee_recipient)` for the market's **current**
+/// `fee_recipient` at call time (fetch it with [`fetch_market`] first) -- accepted as a parameter
+/// rather than re-derived here since this function has no `svm` access of its own.
+pub fn commit_pending_params_ix(
+    payer: &Pubkey,
+    admin: Pubkey,
+    market: Pubkey,
+    fee_position: Pubkey,
+) -> Instruction {
+    let (protocol, _) = protocol_pda();
+    let (pending_market_params, _) = pending_market_params_pda(&market);
+    Instruction {
+        program_id: aegis::ID,
+        accounts: aegis::accounts::CommitPendingParams {
+            payer: *payer,
+            protocol,
+            admin,
+            market,
+            fee_position,
+            pending_market_params,
+        }
+        .to_account_metas(None),
+        data: aegis::instruction::CommitPendingParams {}.data(),
+    }
+}
+
+pub fn commit_pending_params(
+    svm: &mut LiteSVM,
+    payer: &Keypair,
+    admin: Pubkey,
+    market: Pubkey,
+    fee_position: Pubkey,
+) -> TransactionResult {
+    let ix = commit_pending_params_ix(&payer.pubkey(), admin, market, fee_position);
+    send(svm, payer, &[], ix)
+}
+
+// --- migrate_protocol_v2 ---
+
+pub fn migrate_protocol_v2_ix(admin: &Pubkey) -> Instruction {
+    let (protocol, _) = protocol_pda();
+    Instruction {
+        program_id: aegis::ID,
+        accounts: aegis::accounts::MigrateProtocolV2 {
+            admin: *admin,
+            protocol,
+        }
+        .to_account_metas(None),
+        data: aegis::instruction::MigrateProtocolV2 {}.data(),
+    }
+}
+
+pub fn migrate_protocol_v2(svm: &mut LiteSVM, admin: &Keypair) -> TransactionResult {
+    let ix = migrate_protocol_v2_ix(&admin.pubkey());
+    send(svm, admin, &[], ix)
 }

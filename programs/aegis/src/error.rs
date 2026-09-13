@@ -147,6 +147,28 @@ pub enum AegisError {
         "measured post-callback loan_vault delta is less than the required repayment (A-CPI-04)"
     )]
     LiquidationCallbackRepaymentShortfall,
+
+    // ---- 6180-6199: Governance / pause / migration (Phase 12) ----
+    #[msg("Signer does not match protocol.pending_admin, or no admin transfer is pending")]
+    NotPendingAdmin = 180,
+    #[msg("Signer is neither protocol.admin nor protocol.guardian")]
+    NotAdminOrGuardian,
+    #[msg("The guardian may only set pause bits, never clear them (INV-AUTH-04)")]
+    GuardianCannotClearPause,
+    #[msg("Pause flags contain a bit outside SUPPLY|BORROW|WITHDRAW|LIQUIDATE (INV-ADM-03)")]
+    InvalidPauseBits,
+    #[msg("This operation is paused, protocol-wide or for this market")]
+    OperationPaused,
+    #[msg("A risk-increasing parameter proposal is already staged for this market")]
+    PendingParamsAlreadyStaged,
+    #[msg("commit_pending_params called before pending_market_params.effective_at")]
+    PendingParamsNotYetEffective,
+    #[msg("new_fee_position is required and must belong to (market, args.fee_recipient) when fee_recipient is changing")]
+    FeeRecipientPositionMissing,
+    #[msg("pending_market_params.market does not match the supplied market")]
+    PendingParamsMarketMismatch,
+    #[msg("account is not the canonical PDA([b\"protocol\"]) singleton")]
+    NotCanonicalProtocol,
 }
 
 impl From<aegis_math::MathError> for AegisError {

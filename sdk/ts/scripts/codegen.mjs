@@ -285,12 +285,29 @@ function main() {
   //    engine function -- so application code never passes a bare string/object where a typo would
   //    only be caught at runtime.
   {
+    // Every instruction whose args resolve to a single named `{defined: ...}` struct (the common
+    // Aegis shape: `args: CreateMarketArgs`, `args: SetMarketParamsArgs`, etc.) needs that type
+    // imported from types.ts here -- computed from the IDL itself, never a hand-maintained list,
+    // so a newly added instruction using this shape can never silently produce an undefined-type
+    // reference the way a hardcoded import list would (the exact bug this replaced: Phase 12 added
+    // `SetMarketParamsArgs` and a stale two-name hardcoded import compiled the interface but not
+    // the import, producing `Cannot find name 'SetMarketParamsArgs'` only in downstream consumers).
+    const definedArgsTypeNames = new Set();
+    for (const ix of idl.instructions) {
+      const fields = (ix.args ?? []).map((a) => resolveType(a.type, typesByName));
+      if (fields.length === 1 && fields[0].kind === 'defined') {
+        definedArgsTypeNames.add(fields[0].tsType);
+      }
+    }
+    const typesImport = definedArgsTypeNames.size > 0
+      ? `import type { ${[...definedArgsTypeNames].sort().join(', ')} } from './types.js';\n`
+      : '';
     const parts = [
       header(idlRelPath),
       `import type { Address, Instruction } from '@solana/kit';\n`,
       `import type { FieldSpec } from '../borshValues.js';\n`,
       `import { buildGenericInstruction } from '../ixEngine.js';\n`,
-      `import type { CreateMarketArgs, InitProtocolArgs } from './types.js';\n`,
+      typesImport,
       `export interface IxAccountMeta {\n  readonly name: string;\n  readonly camelName: string;\n  readonly writable: boolean;\n  readonly signer: boolean;\n  readonly optional: boolean;\n}\n`,
       `export interface IxDef {\n  readonly name: string;\n  readonly discriminator: Uint8Array;\n  readonly accounts: readonly IxAccountMeta[];\n  readonly argsFields: readonly FieldSpec[];\n}\n`,
     ];

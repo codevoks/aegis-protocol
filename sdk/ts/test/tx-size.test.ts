@@ -76,6 +76,7 @@ interface Case {
 
 async function commonAccounts() {
   return {
+    protocol: await fakeAddress(),
     market: await fakeAddress(),
     position: await fakeAddress(),
     feePosition: await fakeAddress(),
@@ -131,6 +132,7 @@ const cases: Case[] = [
         await fakeAddress(),
         {
           owner: payer.address,
+          protocol: a.protocol,
           market: a.market,
           position: a.position,
           collateralVault: a.collateralVault,
@@ -152,6 +154,7 @@ const cases: Case[] = [
         await fakeAddress(),
         {
           owner: payer.address,
+          protocol: a.protocol,
           market: a.market,
           position: a.position,
           feePosition: a.feePosition,
@@ -172,6 +175,7 @@ const cases: Case[] = [
         await fakeAddress(),
         {
           owner: payer.address,
+          protocol: a.protocol,
           market: a.market,
           position: a.position,
           feePosition: a.feePosition,
@@ -192,6 +196,7 @@ const cases: Case[] = [
         await fakeAddress(),
         {
           owner: payer.address,
+          protocol: a.protocol,
           market: a.market,
           position: a.position,
           feePosition: a.feePosition,
@@ -255,6 +260,7 @@ const cases: Case[] = [
         await fakeAddress(),
         {
           liquidator: payer.address,
+          protocol: a.protocol,
           market: a.market,
           position: a.position,
           feePosition: a.feePosition,
@@ -291,6 +297,7 @@ const cases: Case[] = [
         await fakeAddress(),
         {
           liquidator: payer.address,
+          protocol: a.protocol,
           market: a.market,
           position: a.position,
           feePosition: a.feePosition,

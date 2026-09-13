@@ -21,6 +21,7 @@ import {
   fetchMarket,
   fetchPositionIfExists,
   positionPda,
+  protocolPda,
   withInitPositionIfNeeded,
   type MarketView,
   type PositionView,
@@ -155,6 +156,7 @@ export default function MarketDetailPage({ params }: { params: Promise<{ address
           programId,
           {
             owner: signer.address,
+            protocol: await protocolPda(programId),
             market: marketAddress,
             position: positionAddr,
             collateralVault: m.collateralVault,
@@ -173,6 +175,7 @@ export default function MarketDetailPage({ params }: { params: Promise<{ address
           programId,
           {
             owner: signer.address,
+            protocol: await protocolPda(programId),
             market: marketAddress,
             position: positionAddr,
             feePosition,
@@ -190,6 +193,7 @@ export default function MarketDetailPage({ params }: { params: Promise<{ address
           programId,
           {
             owner: signer.address,
+            protocol: await protocolPda(programId),
             market: marketAddress,
             position: positionAddr,
             feePosition,
@@ -208,6 +212,7 @@ export default function MarketDetailPage({ params }: { params: Promise<{ address
           programId,
           {
             owner: signer.address,
+            protocol: await protocolPda(programId),
             market: marketAddress,
             position: positionAddr,
             feePosition,

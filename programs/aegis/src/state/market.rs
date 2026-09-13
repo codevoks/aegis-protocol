@@ -299,6 +299,179 @@ pub struct AccrueOutcome {
     pub fee_amount: u64,
 }
 
+/// Phase 12 (`governance.md` §4, INV-ADM-09, ADR-0014): a risk-increasing ("loosening")
+/// `set_market_params` change, staged behind `constants::PARAM_TIMELOCK_SECS` rather than applied
+/// immediately. One per `Market` (`PDA([b"pending_params", market])`), created by
+/// `set_market_params` only on the loosening path and closed by `commit_pending_params`.
+///
+/// Deliberately **does not** carry `fee_recipient`: that field is not a risk parameter (it does
+/// not appear in either row of `governance.md` §4's tighten/loosen table) and always applies
+/// immediately in the same `set_market_params` call that staged this proposal, orthogonal to
+/// whatever else is pending.
+#[account]
+pub struct PendingMarketParams {
+    pub market: Pubkey,
+    /// Unix seconds (never slots, per AGENTS.md §7.9) at or after which `commit_pending_params`
+    /// may apply this proposal.
+    pub effective_at: i64,
+
+    pub oracle_kind: u8,
+    pub collateral_feed_id: [u8; 32],
+    pub loan_feed_id: [u8; 32],
+    pub max_price_age_secs: u32,
+    pub max_conf_bps: u16,
+
+    pub max_ltv: u128,
+    pub liq_threshold: u128,
+    pub liq_bonus: u128,
+    pub close_factor: u128,
+    pub full_liq_hf: u128,
+    pub liq_protocol_fee: u128,
+    pub fee: u128,
+    pub min_debt: u64,
+
+    pub base_rate_ps: u128,
+    pub slope1_ps: u128,
+    pub slope2_ps: u128,
+    pub u_kink: u128,
+    pub max_rate_ps: u128,
+
+    pub bump: u8,
+    pub _reserved: [u8; 32],
+}
+
+impl PendingMarketParams {
+    /// `8` (discriminator) + `32` (`market`) + `8` (`effective_at`) + oracle config (`1 + 32 + 32
+    /// + 4 + 2` = 71) + risk params (`16*7 + 8` = 120) + IRM params (`16*5` = 80) + `1` (`bump`)
+    /// + `32` (`_reserved`) = 352.
+    pub const LEN: usize = 8 + 32 + 8 + (1 + 32 + 32 + 4 + 2) + (16 * 7 + 8) + (16 * 5) + 1 + 32;
+}
+
+/// Every field of `Market` that `set_market_params` is capable of touching, in one place so the
+/// tighten/loosen classifier and the instruction handler both work from the same field list
+/// rather than two hand-maintained copies. Deliberately excludes `fee_recipient` (see
+/// [`PendingMarketParams`]'s doc comment) and every identity field (`INV-ADM-06`) — those simply
+/// have no place in this struct, which is what makes changing them unrepresentable rather than
+/// merely rejected (`A-ADM-06`).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[allow(clippy::too_many_arguments)]
+pub struct MutableMarketParams {
+    pub oracle_kind: u8,
+    pub collateral_feed_id: [u8; 32],
+    pub loan_feed_id: [u8; 32],
+    pub max_price_age_secs: u32,
+    pub max_conf_bps: u16,
+
+    pub max_ltv: u128,
+    pub liq_threshold: u128,
+    pub liq_bonus: u128,
+    pub close_factor: u128,
+    pub full_liq_hf: u128,
+    pub liq_protocol_fee: u128,
+    pub fee: u128,
+    pub min_debt: u64,
+
+    pub base_rate_ps: u128,
+    pub slope1_ps: u128,
+    pub slope2_ps: u128,
+    pub u_kink: u128,
+    pub max_rate_ps: u128,
+}
+
+impl MutableMarketParams {
+    /// The current values of every mutable field, read off a live `Market`.
+    pub fn from_market(market: &Market) -> Self {
+        Self {
+            oracle_kind: market.oracle_kind,
+            collateral_feed_id: market.collateral_feed_id,
+            loan_feed_id: market.loan_feed_id,
+            max_price_age_secs: market.max_price_age_secs,
+            max_conf_bps: market.max_conf_bps,
+            max_ltv: market.max_ltv,
+            liq_threshold: market.liq_threshold,
+            liq_bonus: market.liq_bonus,
+            close_factor: market.close_factor,
+            full_liq_hf: market.full_liq_hf,
+            liq_protocol_fee: market.liq_protocol_fee,
+            fee: market.fee,
+            min_debt: market.min_debt,
+            base_rate_ps: market.base_rate_ps,
+            slope1_ps: market.slope1_ps,
+            slope2_ps: market.slope2_ps,
+            u_kink: market.u_kink,
+            max_rate_ps: market.max_rate_ps,
+        }
+    }
+
+    /// Writes every field into `market` unconditionally (identity fields are untouched because
+    /// they are not part of this struct at all). Callers apply this only after
+    /// `Market::validate_risk_params`/`validate_irm_params`/`validate_oracle_config` have already
+    /// accepted the proposed values.
+    pub fn apply_to(&self, market: &mut Market) {
+        market.oracle_kind = self.oracle_kind;
+        market.collateral_feed_id = self.collateral_feed_id;
+        market.loan_feed_id = self.loan_feed_id;
+        market.max_price_age_secs = self.max_price_age_secs;
+        market.max_conf_bps = self.max_conf_bps;
+        market.max_ltv = self.max_ltv;
+        market.liq_threshold = self.liq_threshold;
+        market.liq_bonus = self.liq_bonus;
+        market.close_factor = self.close_factor;
+        market.full_liq_hf = self.full_liq_hf;
+        market.liq_protocol_fee = self.liq_protocol_fee;
+        market.fee = self.fee;
+        market.min_debt = self.min_debt;
+        market.base_rate_ps = self.base_rate_ps;
+        market.slope1_ps = self.slope1_ps;
+        market.slope2_ps = self.slope2_ps;
+        market.u_kink = self.u_kink;
+        market.max_rate_ps = self.max_rate_ps;
+    }
+
+    /// Phase 12 tighten/loosen classification (`governance.md` §4, INV-ADM-09, ADR-0014).
+    /// Returns `true` ("loosening") if `new` is risk-increasing relative to `old` in **any**
+    /// single field; the whole parameter-update call is then staged as one atomic proposal rather
+    /// than partially applied (ADR-0014: partial immediate-plus-staged application is exactly the
+    /// kind of implicit per-field special-casing this repository's rules warn against).
+    ///
+    /// Exact classification, from `governance.md` §4's table:
+    /// - `max_ltv`, `liq_threshold`, `liq_bonus`, `fee`: an **increase** is loosening.
+    /// - `min_debt`: a **decrease** is loosening (the counterintuitive row governance.md calls
+    ///   out explicitly).
+    /// - `max_price_age_secs`, `max_conf_bps`: an **increase** is loosening.
+    /// - `collateral_feed_id`/`loan_feed_id`/`oracle_kind`: **any** change is loosening
+    ///   (governance.md §4: "equivalent to swapping the asset's price source").
+    ///
+    /// `close_factor`, `full_liq_hf`, `liq_protocol_fee`, and the five IRM parameters
+    /// (`base_rate_ps`, `slope1_ps`, `slope2_ps`, `u_kink`, `max_rate_ps`) have **no directional
+    /// classification anywhere in `governance.md` or `economic-model.md`** — inventing one here
+    /// would be exactly the "intuition-based rule" `docs/phases/phase-12-governance.md` forbids.
+    /// This is a documented Phase 12 implementation decision (ADR-0014), not a silent guess: **any**
+    /// change to one of these fields is conservatively treated as loosening. A parameter set that
+    /// is safe either way loses nothing but a delay; one that turns out to matter is never applied
+    /// without the observation window the timelock exists to provide.
+    pub fn is_loosening(old: &Self, new: &Self) -> bool {
+        new.max_ltv > old.max_ltv
+            || new.liq_threshold > old.liq_threshold
+            || new.liq_bonus > old.liq_bonus
+            || new.fee > old.fee
+            || new.min_debt < old.min_debt
+            || new.max_price_age_secs > old.max_price_age_secs
+            || new.max_conf_bps > old.max_conf_bps
+            || new.collateral_feed_id != old.collateral_feed_id
+            || new.loan_feed_id != old.loan_feed_id
+            || new.oracle_kind != old.oracle_kind
+            || new.close_factor != old.close_factor
+            || new.full_liq_hf != old.full_liq_hf
+            || new.liq_protocol_fee != old.liq_protocol_fee
+            || new.base_rate_ps != old.base_rate_ps
+            || new.slope1_ps != old.slope1_ps
+            || new.slope2_ps != old.slope2_ps
+            || new.u_kink != old.u_kink
+            || new.max_rate_ps != old.max_rate_ps
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -308,6 +481,212 @@ mod tests {
         // account-model.md §4 states "8 + ~633 ~= 641" (approximate); 640 is the exact sum of
         // the field list in that same section.
         assert_eq!(Market::LEN, 640);
+    }
+
+    #[test]
+    fn pending_market_params_len_is_352() {
+        assert_eq!(PendingMarketParams::LEN, 352);
+    }
+
+    fn reference_mutable_params() -> MutableMarketParams {
+        MutableMarketParams {
+            oracle_kind: 0,
+            collateral_feed_id: [1u8; 32],
+            loan_feed_id: [2u8; 32],
+            max_price_age_secs: 60,
+            max_conf_bps: 100,
+            max_ltv: REF_MAX_LTV,
+            liq_threshold: REF_LT,
+            liq_bonus: REF_BONUS,
+            close_factor: REF_CLOSE_FACTOR,
+            full_liq_hf: REF_FULL_LIQ_HF,
+            liq_protocol_fee: REF_LIQ_PROTOCOL_FEE,
+            fee: REF_FEE,
+            min_debt: REF_MIN_DEBT,
+            base_rate_ps: 0,
+            slope1_ps: WAD / 20,
+            slope2_ps: WAD / 2,
+            u_kink: WAD / 2,
+            max_rate_ps: WAD,
+        }
+    }
+
+    // U-ADM-02 (informal): an unchanged parameter set is never loosening.
+    #[test]
+    fn identical_params_are_not_loosening() {
+        let p = reference_mutable_params();
+        assert!(!MutableMarketParams::is_loosening(&p, &p));
+    }
+
+    // governance.md §4: raising max_ltv/liq_threshold/liq_bonus/fee is loosening; lowering is not
+    // (by itself).
+    #[test]
+    fn raising_max_ltv_liq_threshold_liq_bonus_or_fee_is_loosening() {
+        let old = reference_mutable_params();
+
+        let mut new = old;
+        new.max_ltv += 1;
+        assert!(MutableMarketParams::is_loosening(&old, &new));
+
+        let mut new = old;
+        new.liq_threshold += 1;
+        assert!(MutableMarketParams::is_loosening(&old, &new));
+
+        let mut new = old;
+        new.liq_bonus += 1;
+        assert!(MutableMarketParams::is_loosening(&old, &new));
+
+        let mut new = old;
+        new.fee += 1;
+        assert!(MutableMarketParams::is_loosening(&old, &new));
+    }
+
+    #[test]
+    fn lowering_max_ltv_liq_threshold_liq_bonus_or_fee_is_tightening() {
+        let old = reference_mutable_params();
+
+        let mut new = old;
+        new.max_ltv -= 1;
+        assert!(!MutableMarketParams::is_loosening(&old, &new));
+
+        let mut new = old;
+        new.liq_threshold -= 1;
+        assert!(!MutableMarketParams::is_loosening(&old, &new));
+
+        let mut new = old;
+        new.liq_bonus -= 1;
+        assert!(!MutableMarketParams::is_loosening(&old, &new));
+
+        let mut new = old;
+        new.fee -= 1;
+        assert!(!MutableMarketParams::is_loosening(&old, &new));
+    }
+
+    // governance.md §4's explicitly counterintuitive row: LOWERING min_debt is loosening, RAISING
+    // it is tightening -- the opposite direction from every other field above.
+    #[test]
+    fn min_debt_direction_is_inverted() {
+        let old = reference_mutable_params();
+
+        let mut lowered = old;
+        lowered.min_debt -= 1;
+        assert!(
+            MutableMarketParams::is_loosening(&old, &lowered),
+            "lowering min_debt must be classified as loosening"
+        );
+
+        let mut raised = old;
+        raised.min_debt += 1;
+        assert!(
+            !MutableMarketParams::is_loosening(&old, &raised),
+            "raising min_debt must be classified as tightening"
+        );
+    }
+
+    #[test]
+    fn raising_max_price_age_or_max_conf_bps_is_loosening() {
+        let old = reference_mutable_params();
+
+        let mut new = old;
+        new.max_price_age_secs += 1;
+        assert!(MutableMarketParams::is_loosening(&old, &new));
+
+        let mut new = old;
+        new.max_conf_bps += 1;
+        assert!(MutableMarketParams::is_loosening(&old, &new));
+    }
+
+    #[test]
+    fn lowering_max_price_age_or_max_conf_bps_is_tightening() {
+        let old = reference_mutable_params();
+
+        let mut new = old;
+        new.max_price_age_secs -= 1;
+        assert!(!MutableMarketParams::is_loosening(&old, &new));
+
+        let mut new = old;
+        new.max_conf_bps -= 1;
+        assert!(!MutableMarketParams::is_loosening(&old, &new));
+    }
+
+    // governance.md §4: ANY feed-ID or oracle_kind change is loosening, regardless of "direction"
+    // (there is no direction for an opaque identifier).
+    #[test]
+    fn any_feed_id_or_oracle_kind_change_is_loosening() {
+        let old = reference_mutable_params();
+
+        let mut new = old;
+        new.collateral_feed_id = [9u8; 32];
+        assert!(MutableMarketParams::is_loosening(&old, &new));
+
+        let mut new = old;
+        new.loan_feed_id = [9u8; 32];
+        assert!(MutableMarketParams::is_loosening(&old, &new));
+
+        let mut new = old;
+        new.oracle_kind = 1;
+        assert!(MutableMarketParams::is_loosening(&old, &new));
+    }
+
+    // ADR-0014's conservative default: any change to a field governance.md does not classify
+    // (close_factor, full_liq_hf, liq_protocol_fee, and the five IRM params) is loosening.
+    #[test]
+    fn unclassified_fields_default_to_loosening_on_any_change() {
+        let old = reference_mutable_params();
+
+        let mut new = old;
+        new.close_factor += 1;
+        assert!(MutableMarketParams::is_loosening(&old, &new));
+
+        let mut new = old;
+        new.full_liq_hf -= 1;
+        assert!(MutableMarketParams::is_loosening(&old, &new));
+
+        let mut new = old;
+        new.liq_protocol_fee += 1;
+        assert!(MutableMarketParams::is_loosening(&old, &new));
+
+        let mut new = old;
+        new.base_rate_ps += 1;
+        assert!(MutableMarketParams::is_loosening(&old, &new));
+
+        let mut new = old;
+        new.slope1_ps += 1;
+        assert!(MutableMarketParams::is_loosening(&old, &new));
+
+        let mut new = old;
+        new.slope2_ps += 1;
+        assert!(MutableMarketParams::is_loosening(&old, &new));
+
+        let mut new = old;
+        new.u_kink += 1;
+        assert!(MutableMarketParams::is_loosening(&old, &new));
+
+        let mut new = old;
+        new.max_rate_ps -= 1;
+        assert!(MutableMarketParams::is_loosening(&old, &new));
+    }
+
+    #[test]
+    fn from_market_and_apply_to_round_trip() {
+        let mut market = test_market(
+            1_000_000_000,
+            1_000_000_000_000_000,
+            900_000_000,
+            900_000_000_000_000,
+            1_000,
+            REF_FEE,
+        );
+        let snapshot = MutableMarketParams::from_market(&market);
+        assert_eq!(snapshot.max_ltv, market.max_ltv);
+        assert_eq!(snapshot.min_debt, market.min_debt);
+
+        let mut proposed = snapshot;
+        proposed.fee = REF_FEE / 2;
+        proposed.apply_to(&mut market);
+        assert_eq!(market.fee, REF_FEE / 2);
+        // Identity fields are untouched -- MutableMarketParams has no field for them at all.
+        assert_eq!(market.collateral_decimals, 9);
     }
 
     const REF_MAX_LTV: u128 = 750_000_000_000_000_000; // 0.75 WAD

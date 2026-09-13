@@ -17,6 +17,7 @@ export interface AccountDiscriminator {
 
 export const ACCOUNT_DISCRIMINATORS: Record<string, Uint8Array> = {
   "Market": Uint8Array.from([219, 190, 213, 55, 0, 227, 198, 154]),
+  "PendingMarketParams": Uint8Array.from([34, 82, 61, 75, 226, 224, 192, 191]),
   "Position": Uint8Array.from([170, 188, 143, 228, 122, 64, 247, 208]),
   "Protocol": Uint8Array.from([45, 39, 101, 43, 115, 72, 131, 40]),
 };

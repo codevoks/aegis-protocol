@@ -48,8 +48,14 @@ fn protocol_initializes_with_expected_admin_and_layout() {
     assert_eq!(protocol.paused, 0);
     assert_eq!(protocol.bump, bump);
 
+    // Phase 12: schema_version is set at creation (ADR-0014).
+    assert_eq!(
+        protocol.schema_version,
+        aegis::constants::PROTOCOL_SCHEMA_VERSION
+    );
+
     // U-ACCT-01: _reserved is all-zero.
-    assert_eq!(protocol._reserved, [0u8; 64]);
+    assert_eq!(protocol._reserved, [0u8; 63]);
 
     // U-ACCT-02: the account is exactly Protocol::LEN — created at final size, no realloc.
     let account = svm

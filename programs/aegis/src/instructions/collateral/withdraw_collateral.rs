@@ -11,11 +11,12 @@
 //! figure for the health check uses `Market::accrue_view` (pure, `economic-model.md` §4.5), never
 //! `accrue_mut`.
 
-use crate::constants::{COLLATERAL_VAULT_SEED, MARKET_SEED};
+use crate::constants::{COLLATERAL_VAULT_SEED, MARKET_SEED, PAUSE_WITHDRAW, PROTOCOL_SEED};
 use crate::error::AegisError;
 use crate::events::CollateralWithdrawn;
+use crate::guards::require_pause_bit_clear;
 use crate::oracle;
-use crate::state::{Market, Position};
+use crate::state::{Market, Position, Protocol};
 use crate::token::transfer::transfer_checked_out;
 use aegis_math::{collateral_value, debt_value, is_within_max_ltv, to_assets_up};
 use anchor_lang::prelude::*;
@@ -27,6 +28,12 @@ pub struct WithdrawCollateral<'info> {
     /// counterpart to `deposit_collateral`'s no-signer-required depositor (INV-AUTH-03): this
     /// operation can only reduce the position's safety, so the owner must authorize it.
     pub owner: Signer<'info>,
+
+    #[account(
+        seeds = [PROTOCOL_SEED],
+        bump = protocol.bump,
+    )]
+    pub protocol: Account<'info, Protocol>,
 
     #[account(
         seeds = [
@@ -74,6 +81,12 @@ pub struct WithdrawCollateral<'info> {
 }
 
 pub fn handler(ctx: Context<WithdrawCollateral>, amount: u64) -> Result<()> {
+    require_pause_bit_clear(
+        ctx.accounts.protocol.paused,
+        ctx.accounts.market.paused,
+        PAUSE_WITHDRAW,
+        AegisError::OperationPaused,
+    )?;
     require!(amount > 0, AegisError::ZeroAmount);
 
     require_keys_eq!(

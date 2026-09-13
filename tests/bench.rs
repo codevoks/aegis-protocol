@@ -1001,6 +1001,181 @@ fn cu_benchmark_suite() {
         }
     }
 
+    // --- Phase 12: governance/admin instructions. All admin/guardian-gated, no oracle, no token
+    // CPI -- benchmarked once each (token_program "n/a") rather than per-TokenVariant, since none
+    // of these instructions touch a token account at all. ---
+    {
+        let fx = Fixture::new(TokenVariant::ClassicSpl, 90);
+        let new_admin = scenarios::fixed_pubkey(230);
+        let ix = aegis_test_kit::market::set_pending_admin_ix(&fx.admin.pubkey(), new_admin);
+        record_na(
+            &mut mollusk,
+            &fx,
+            &ix,
+            "set_pending_admin",
+            "fresh_protocol",
+            &mut out,
+        );
+    }
+    {
+        let mut fx = Fixture::new(TokenVariant::ClassicSpl, 91);
+        let admin_kp = fx.admin.insecure_clone();
+        let pending_admin = Keypair::new_from_array([231u8; 32]);
+        let set_ix = aegis_test_kit::market::set_pending_admin_ix(
+            &fx.admin.pubkey(),
+            pending_admin.pubkey(),
+        );
+        send(&mut fx, &admin_kp, set_ix);
+        let ix = aegis_test_kit::market::accept_admin_ix(&pending_admin.pubkey());
+        eprintln!("[bench] measuring accept_admin/fresh_protocol/n_a");
+        let accounts = harness::snapshot_for(&fx.svm, &ix);
+        let ts = scenarios::now(&fx.svm);
+        let cu = harness::measure_at(&mut mollusk, ts, &ix, &accounts);
+        out.push(CuRecord {
+            instruction: "accept_admin",
+            scenario: "fresh_protocol",
+            token_program: "n/a",
+            cu,
+            accounts: ix.accounts.len(),
+        });
+    }
+    {
+        let fx = Fixture::new(TokenVariant::ClassicSpl, 92);
+        let new_guardian = scenarios::fixed_pubkey(232);
+        let ix = aegis_test_kit::market::set_guardian_ix(&fx.admin.pubkey(), new_guardian);
+        record_na(
+            &mut mollusk,
+            &fx,
+            &ix,
+            "set_guardian",
+            "fresh_protocol",
+            &mut out,
+        );
+    }
+    {
+        let fx = Fixture::new(TokenVariant::ClassicSpl, 93);
+        let ix = aegis_test_kit::market::set_protocol_pause_ix(
+            &fx.admin.pubkey(),
+            aegis::constants::PAUSE_SUPPLY,
+        );
+        record_na(
+            &mut mollusk,
+            &fx,
+            &ix,
+            "set_protocol_pause",
+            "admin_sets_one_bit",
+            &mut out,
+        );
+    }
+    {
+        let fx = Fixture::new(TokenVariant::ClassicSpl, 94);
+        let ix = aegis_test_kit::market::set_market_pause_ix(
+            &fx.admin.pubkey(),
+            fx.market,
+            aegis::constants::PAUSE_SUPPLY,
+        );
+        record_na(
+            &mut mollusk,
+            &fx,
+            &ix,
+            "set_market_pause",
+            "admin_sets_one_bit",
+            &mut out,
+        );
+    }
+    {
+        let fx = Fixture::new(TokenVariant::ClassicSpl, 95);
+        let mut args = scenarios::reference_set_market_params_args(fx.fee_recipient);
+        args.max_ltv -= 1; // tightening: applies immediately, no PendingMarketParams created
+        let ix = aegis_test_kit::market::set_market_params_ix(
+            &fx.admin.pubkey(),
+            fx.market,
+            fx.fee_position,
+            None,
+            args,
+        );
+        record_na(
+            &mut mollusk,
+            &fx,
+            &ix,
+            "set_market_params",
+            "tighten_immediate",
+            &mut out,
+        );
+    }
+    {
+        let mut fx = Fixture::new(TokenVariant::ClassicSpl, 96);
+        let admin_kp = fx.admin.insecure_clone();
+        let mut loosen_args = scenarios::reference_set_market_params_args(fx.fee_recipient);
+        loosen_args.max_ltv += 1; // loosening: stages a PendingMarketParams
+        let stage_ix = aegis_test_kit::market::set_market_params_ix(
+            &fx.admin.pubkey(),
+            fx.market,
+            fx.fee_position,
+            None,
+            loosen_args,
+        );
+        send_priced(&mut fx, &admin_kp, stage_ix, 400_000);
+        let mut clock = fx.svm.get_sysvar::<solana_clock::Clock>();
+        clock.unix_timestamp += aegis::constants::PARAM_TIMELOCK_SECS;
+        fx.svm.set_sysvar(&clock);
+        let ix = aegis_test_kit::market::commit_pending_params_ix(
+            &fx.admin.pubkey(),
+            fx.admin.pubkey(),
+            fx.market,
+            fx.fee_position,
+        );
+        record_na(
+            &mut mollusk,
+            &fx,
+            &ix,
+            "commit_pending_params",
+            "at_effective_at",
+            &mut out,
+        );
+    }
+    {
+        // migrate_protocol_v2 measured against a real, injected ProtocolV1 account -- the same
+        // legitimate fixture technique tests/phase12_migration.rs uses, since no real transaction
+        // in this already-Phase-12 program can produce a ProtocolV1 account any other way.
+        let (mut svm, admin) = aegis_test_kit::deploy(aegis::id(), scenarios::program_bytes());
+        let (protocol_pubkey, bump) = aegis_test_kit::protocol_pda();
+        let v1 = aegis::state::ProtocolV1 {
+            admin: admin.pubkey(),
+            pending_admin: Pubkey::default(),
+            guardian: scenarios::fixed_pubkey(240),
+            fee_recipient: scenarios::fixed_pubkey(241),
+            paused: 0,
+            bump,
+            _reserved: [0u8; 64],
+        };
+        let mut data = Vec::new();
+        anchor_lang::AccountSerialize::try_serialize(&v1, &mut data).unwrap();
+        svm.set_account(
+            protocol_pubkey,
+            solana_account::Account {
+                lamports: svm.minimum_balance_for_rent_exemption(data.len()),
+                data,
+                owner: aegis::id(),
+                executable: false,
+                rent_epoch: 0,
+            },
+        )
+        .unwrap();
+        let ix = aegis_test_kit::market::migrate_protocol_v2_ix(&admin.pubkey());
+        eprintln!("[bench] measuring migrate_protocol_v2/v1_account/n_a");
+        let accounts = harness::snapshot_for(&svm, &ix);
+        let ts = scenarios::now(&svm);
+        let cu = harness::measure_at(&mut mollusk, ts, &ix, &accounts);
+        out.push(CuRecord {
+            instruction: "migrate_protocol_v2",
+            scenario: "v1_account",
+            token_program: "n/a",
+            cu,
+            accounts: ix.accounts.len(),
+        });
+    }
+
     let over_budget_count = print_and_maybe_write(&out);
     assert_eq!(
         over_budget_count, 0,

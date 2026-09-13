@@ -195,3 +195,150 @@ pub struct CollateralFeesWithdrawn {
     pub amount: u64,
     pub remaining_collateral_fee_accrued: u64,
 }
+
+// ---- Phase 12: governance, pause, and migration events ----
+
+/// `set_pending_admin` (`instruction-catalogue.md` §2-5, INV-ADM-02).
+#[event]
+pub struct AdminTransferStarted {
+    pub protocol: Pubkey,
+    pub current_admin: Pubkey,
+    pub pending_admin: Pubkey,
+}
+
+/// `accept_admin`. `old_admin` is the admin that just lost authority.
+#[event]
+pub struct AdminTransferred {
+    pub protocol: Pubkey,
+    pub old_admin: Pubkey,
+    pub new_admin: Pubkey,
+}
+
+/// `set_guardian`.
+#[event]
+pub struct GuardianChanged {
+    pub protocol: Pubkey,
+    pub admin: Pubkey,
+    pub old_guardian: Pubkey,
+    pub new_guardian: Pubkey,
+}
+
+/// `set_protocol_pause`. `authority` is whichever of `admin`/`guardian` signed.
+#[event]
+pub struct ProtocolPauseSet {
+    pub protocol: Pubkey,
+    pub authority: Pubkey,
+    pub old_paused: u8,
+    pub new_paused: u8,
+}
+
+/// `set_market_pause`.
+#[event]
+pub struct MarketPauseSet {
+    pub market: Pubkey,
+    pub authority: Pubkey,
+    pub old_paused: u8,
+    pub new_paused: u8,
+}
+
+/// `set_market_params`'s immediate-application path (tightening, or a pure `fee_recipient`
+/// change) — a full before/after snapshot of every field the instruction is capable of touching,
+/// mirroring `MarketCreated`'s audit-record style (`instruction-catalogue.md` §7).
+#[event]
+pub struct MarketParamsUpdated {
+    pub market: Pubkey,
+    pub admin: Pubkey,
+
+    pub old_fee_recipient: Pubkey,
+    pub new_fee_recipient: Pubkey,
+
+    pub old_oracle_kind: u8,
+    pub new_oracle_kind: u8,
+    pub old_collateral_feed_id: [u8; 32],
+    pub new_collateral_feed_id: [u8; 32],
+    pub old_loan_feed_id: [u8; 32],
+    pub new_loan_feed_id: [u8; 32],
+    pub old_max_price_age_secs: u32,
+    pub new_max_price_age_secs: u32,
+    pub old_max_conf_bps: u16,
+    pub new_max_conf_bps: u16,
+
+    pub old_max_ltv: u128,
+    pub new_max_ltv: u128,
+    pub old_liq_threshold: u128,
+    pub new_liq_threshold: u128,
+    pub old_liq_bonus: u128,
+    pub new_liq_bonus: u128,
+    pub old_close_factor: u128,
+    pub new_close_factor: u128,
+    pub old_full_liq_hf: u128,
+    pub new_full_liq_hf: u128,
+    pub old_liq_protocol_fee: u128,
+    pub new_liq_protocol_fee: u128,
+    pub old_fee: u128,
+    pub new_fee: u128,
+    pub old_min_debt: u64,
+    pub new_min_debt: u64,
+
+    pub old_base_rate_ps: u128,
+    pub new_base_rate_ps: u128,
+    pub old_slope1_ps: u128,
+    pub new_slope1_ps: u128,
+    pub old_slope2_ps: u128,
+    pub new_slope2_ps: u128,
+    pub old_u_kink: u128,
+    pub new_u_kink: u128,
+    pub old_max_rate_ps: u128,
+    pub new_max_rate_ps: u128,
+}
+
+/// `set_market_params`'s staged path (a risk-increasing/"loosening" change): the proposal is
+/// recorded, not applied. Carries the same field set as [`MarketParamsUpdated`] minus
+/// `fee_recipient` (which is never staged — it is orthogonal to risk and always applies
+/// immediately) plus `effective_at`.
+#[event]
+pub struct ParamsStaged {
+    pub market: Pubkey,
+    pub pending_market_params: Pubkey,
+    pub admin: Pubkey,
+    pub effective_at: i64,
+
+    pub oracle_kind: u8,
+    pub collateral_feed_id: [u8; 32],
+    pub loan_feed_id: [u8; 32],
+    pub max_price_age_secs: u32,
+    pub max_conf_bps: u16,
+
+    pub max_ltv: u128,
+    pub liq_threshold: u128,
+    pub liq_bonus: u128,
+    pub close_factor: u128,
+    pub full_liq_hf: u128,
+    pub liq_protocol_fee: u128,
+    pub fee: u128,
+    pub min_debt: u64,
+
+    pub base_rate_ps: u128,
+    pub slope1_ps: u128,
+    pub slope2_ps: u128,
+    pub u_kink: u128,
+    pub max_rate_ps: u128,
+}
+
+/// `commit_pending_params`, once the timelock has elapsed and the staged proposal has been
+/// re-validated and applied.
+#[event]
+pub struct StagedParamsCommitted {
+    pub market: Pubkey,
+    pub pending_market_params: Pubkey,
+    pub effective_at: i64,
+}
+
+/// `migrate_protocol_v2` (`INV-UPG-01..03`, ADR-0014). Emitted once, after a successful
+/// `Migration<'info, ProtocolV1, Protocol>::migrate` call.
+#[event]
+pub struct ProtocolMigrated {
+    pub protocol: Pubkey,
+    pub admin: Pubkey,
+    pub schema_version: u8,
+}

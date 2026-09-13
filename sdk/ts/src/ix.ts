@@ -13,46 +13,64 @@ import {
   collateralVaultPda,
   loanVaultPda,
   marketPda,
+  pendingMarketParamsPda,
   positionPda,
   protocolPda,
 } from './pda.js';
 import { fetchPositionIfExists } from './accounts.js';
 import type { Rpc, SolanaRpcApi } from '@solana/kit';
 import {
+  buildAcceptAdminInstruction,
   buildAccrueInterestInstruction,
   buildBorrowInstruction,
   buildClosePositionInstruction,
+  buildCommitPendingParamsInstruction,
   buildCreateMarketInstruction,
   buildDepositCollateralInstruction,
   buildInitPositionInstruction,
   buildInitializeProtocolInstruction,
   buildLiquidateInstruction,
+  buildMigrateProtocolV2Instruction,
   buildRepayInstruction,
+  buildSetGuardianInstruction,
+  buildSetMarketParamsInstruction,
+  buildSetMarketPauseInstruction,
+  buildSetPendingAdminInstruction,
+  buildSetProtocolPauseInstruction,
   buildSupplyInstruction,
   buildWithdrawCollateralFeesInstruction,
   buildWithdrawCollateralInstruction,
   buildWithdrawInstruction,
   type CreateMarketArgs,
   type InitProtocolArgs,
+  type SetMarketParamsArgs,
 } from './generated/index.js';
 import { SYSTEM_PROGRAM_ADDRESS } from './config.js';
 
 export {
+  buildAcceptAdminInstruction,
   buildAccrueInterestInstruction,
   buildBorrowInstruction,
   buildClosePositionInstruction,
+  buildCommitPendingParamsInstruction,
   buildCreateMarketInstruction,
   buildDepositCollateralInstruction,
   buildInitPositionInstruction,
   buildInitializeProtocolInstruction,
   buildLiquidateInstruction,
+  buildMigrateProtocolV2Instruction,
   buildRepayInstruction,
+  buildSetGuardianInstruction,
+  buildSetMarketParamsInstruction,
+  buildSetMarketPauseInstruction,
+  buildSetPendingAdminInstruction,
+  buildSetProtocolPauseInstruction,
   buildSupplyInstruction,
   buildWithdrawCollateralFeesInstruction,
   buildWithdrawCollateralInstruction,
   buildWithdrawInstruction,
 };
-export type { CreateMarketArgs, InitProtocolArgs };
+export type { CreateMarketArgs, InitProtocolArgs, SetMarketParamsArgs };
 
 export interface MarketIdentity {
   programId: Address;
@@ -164,11 +182,15 @@ export async function buildSupplyWithInitIfNeeded(
   assets: bigint,
   shares: bigint,
 ): Promise<Instruction[]> {
-  const position = await positionPda(programId, accounts.market, accounts.owner);
+  const [position, protocol] = await Promise.all([
+    positionPda(programId, accounts.market, accounts.owner),
+    protocolPda(programId),
+  ]);
   const supplyIx = buildSupplyInstruction(
     programId,
     {
       owner: accounts.owner,
+      protocol,
       market: accounts.market,
       position,
       feePosition: accounts.feePosition,
@@ -182,4 +204,4 @@ export async function buildSupplyWithInitIfNeeded(
   return withInitPositionIfNeeded(rpc, programId, accounts.market, accounts.owner, accounts.owner, supplyIx);
 }
 
-export { protocolPda };
+export { protocolPda, pendingMarketParamsPda };

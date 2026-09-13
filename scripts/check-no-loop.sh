@@ -40,7 +40,7 @@ cd "$(dirname "${BASH_SOURCE[0]}")/.."
 # file:line -> already-reviewed, justified above.
 ALLOWED=(
     "programs/aegis/src/token/policy.rs:52"
-    "programs/aegis/src/instructions/liquidate/liquidate.rs:185"
+    "programs/aegis/src/instructions/liquidate/liquidate.rs:204"
 )
 
 is_allowed() {

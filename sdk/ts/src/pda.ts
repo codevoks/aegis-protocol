@@ -83,6 +83,16 @@ export async function loanVaultPda(programId: Address, market: Address): Promise
   return addr;
 }
 
+/** `PDA([b"pending_params", market])` (Phase 12, `constants::PENDING_PARAMS_SEED`) -- the staged
+ *  risk-increasing `set_market_params` proposal, if one currently exists for this market. */
+export async function pendingMarketParamsPda(programId: Address, market: Address): Promise<Address> {
+  const [addr] = await getProgramDerivedAddress({
+    programAddress: programId,
+    seeds: [textEncoder.encode('pending_params'), addressBytes(market)],
+  });
+  return addr;
+}
+
 /** Every canonical Aegis PDA for a given `(collateralMint, loanMint, configId)` market, derived in
  *  one call -- the shape most read/UI code actually wants. */
 export interface MarketPdas {

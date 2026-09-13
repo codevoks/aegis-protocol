@@ -34,8 +34,16 @@ pub mod token;
 // which exist for the public API surface). These are private, unqualified `use` statements, not
 // `pub use`, so the `handler` name every instruction file defines never becomes an ambiguous
 // public re-export; it is only ever called through a fully qualified path below.
+use instructions::admin::accept_admin::*;
+use instructions::admin::commit_pending_params::*;
 use instructions::admin::create_market::*;
 use instructions::admin::initialize_protocol::*;
+use instructions::admin::migrate_protocol_v2::*;
+use instructions::admin::set_guardian::*;
+use instructions::admin::set_market_params::*;
+use instructions::admin::set_market_pause::*;
+use instructions::admin::set_pending_admin::*;
+use instructions::admin::set_protocol_pause::*;
 use instructions::admin::withdraw_collateral_fees::*;
 use instructions::borrow::accrue::*;
 use instructions::borrow::borrow::*;
@@ -167,6 +175,71 @@ pub mod aegis {
         amount: u64,
     ) -> Result<()> {
         instructions::admin::withdraw_collateral_fees::handler(ctx, amount)
+    }
+
+    // ---- Phase 12: governance, upgrades, and migrations ----
+
+    /// First step of the two-step admin transfer (`instruction-catalogue.md` §2-5, INV-ADM-02).
+    /// Writes only `pending_admin`; the current admin keeps full authority until `accept_admin`
+    /// succeeds. There is no single-step `set_admin` anywhere in this program.
+    pub fn set_pending_admin(ctx: Context<SetPendingAdmin>, new_admin: Pubkey) -> Result<()> {
+        instructions::admin::set_pending_admin::handler(ctx, new_admin)
+    }
+
+    /// Second step of the two-step admin transfer. Signer must equal `protocol.pending_admin`
+    /// exactly (`A-AUTH-05`, INV-AUTH-05); a replay after success fails because `pending_admin` is
+    /// cleared in the same instruction that consumes it.
+    pub fn accept_admin(ctx: Context<AcceptAdmin>) -> Result<()> {
+        instructions::admin::accept_admin::handler(ctx)
+    }
+
+    /// Admin-only guardian reassignment (`instruction-catalogue.md` §2-5). No implicit
+    /// pause/unpause side effect.
+    pub fn set_guardian(ctx: Context<SetGuardian>, new_guardian: Pubkey) -> Result<()> {
+        instructions::admin::set_guardian::handler(ctx, new_guardian)
+    }
+
+    /// Protocol-wide pause bits, admin or guardian, asymmetrically: the guardian may only add
+    /// bits, never clear one (`A-AUTH-04`, INV-AUTH-04); undefined bits are rejected
+    /// unconditionally (`A-ADM-05`, INV-ADM-03).
+    pub fn set_protocol_pause(ctx: Context<SetProtocolPause>, flags: u8) -> Result<()> {
+        instructions::admin::set_protocol_pause::handler(ctx, flags)
+    }
+
+    /// Per-market pause bits, same admin/guardian asymmetry as `set_protocol_pause`, scoped to one
+    /// market (`instruction-catalogue.md` §8).
+    pub fn set_market_pause(ctx: Context<SetMarketPause>, flags: u8) -> Result<()> {
+        instructions::admin::set_market_pause::handler(ctx, flags)
+    }
+
+    /// Admin parameter updates with full bounds re-validation and `accrue_mut` before any change
+    /// takes effect (`instruction-catalogue.md` §7, INV-ADM-05..07). Risk-reducing changes apply
+    /// immediately; risk-increasing changes are staged behind a timelock in
+    /// `PendingMarketParams` (`governance.md` §4, INV-ADM-09). Identity fields (mints, token
+    /// programs, vaults, decimals, `config_id`) have no field in `SetMarketParamsArgs` at all
+    /// (INV-ADM-06, `A-ADM-06`).
+    pub fn set_market_params(
+        ctx: Context<SetMarketParams>,
+        args: SetMarketParamsArgs,
+    ) -> Result<()> {
+        instructions::admin::set_market_params::handler(ctx, args)
+    }
+
+    /// Applies a staged risk-increasing parameter change once its timelock has elapsed
+    /// (`instruction-catalogue.md` §7, INV-ADM-09). Permissionless; re-validates the canonical
+    /// bounds against the staged values before applying them and accrues under the still-active
+    /// old parameters first, exactly like the immediate path.
+    pub fn commit_pending_params(ctx: Context<CommitPendingParams>) -> Result<()> {
+        instructions::admin::commit_pending_params::handler(ctx)
+    }
+
+    /// The Phase 12 account-schema migration demonstration (INV-UPG-01..03): migrates a `Protocol`
+    /// account created before `schema_version` existed into the current schema, using Anchor
+    /// 1.2.0's `Migration<'info, ProtocolV1, Protocol>` primitive. No realloc (both layouts are
+    /// 202 bytes); no token movement; idempotent by construction (a second attempt fails at
+    /// account deserialization, before this handler runs at all).
+    pub fn migrate_protocol_v2(ctx: Context<MigrateProtocolV2>) -> Result<()> {
+        instructions::admin::migrate_protocol_v2::handler(ctx)
     }
 }
 

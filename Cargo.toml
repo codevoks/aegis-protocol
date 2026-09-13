@@ -15,6 +15,10 @@ members = [
     "crates/aegis-test-kit",
     "labs/example-liquidator",
     "labs/hostile-callback",
+    "labs/vault-anchor",
+    "labs/vault-native",
+    "labs/vault-pinocchio",
+    "labs/cu-bench",
 ]
 
 [workspace.package]
@@ -67,6 +71,24 @@ serde_json = "1"
 # `phase-10-security.md` requires ("all keypairs and the RNG are seeded; every failure must be
 # reproducible and shrinkable from its seed") -- never `rand::thread_rng()` anywhere in the fuzzer.
 rand = "0.8"
+# Phase 11, tests/bench/ ONLY: the Mollusk CU-measurement harness (`docs/performance-strategy.md`
+# §5). Current stable version verified directly against crates.io at Phase 11 start (2026-09-13,
+# `cargo search mollusk-svm` -> 0.15.1; RV-2 in `docs/ecosystem-research.md` §12.2 already recorded
+# this same 0.15.1 from Phase 1, re-confirmed here rather than assumed). Mollusk executes the real
+# compiled `.so` through the actual BPF loader and reports its own `compute_units_consumed` --
+# LiteSVM (this workspace's primary harness) does not expose per-instruction CU, which is exactly
+# why the phase spec requires Mollusk specifically rather than reusing LiteSVM for this.
+# Same crate/version `crates/aegis-test-kit/Cargo.toml` already depends on, for the identical
+# reason: benchmark setup transactions for `borrow`/`liquidate` need a higher-than-default compute
+# unit limit to land in `LiteSVM` before Mollusk re-executes the same instruction for measurement.
+solana-compute-budget-interface = "3"
+mollusk-svm = "0.15.1"
+# Bundles the real, precompiled SPL Token AND Token-2022 program ELFs (default features cover
+# both, verified via this crate's own Cargo.toml) so a benchmarked instruction's CPI
+# (`transfer_checked`) executes the actual token program under Mollusk, not a stub -- one
+# dependency instead of two separate `mollusk-svm-programs-token{,-2022}` crates. Same 0.15.1 line
+# as `mollusk-svm` (verified together).
+mollusk-svm-programs-token = "0.15.1"
 
 # overflow-checks = true is the single most important line in this file (T-16). Release
 # builds do not check arithmetic overflow by default; without this, the entire arithmetic

@@ -1,8 +1,8 @@
 # Aegis — Project Status
 
-**Last updated: 2026-09-12**
-**Current phase: Phase 10 — Adversarial, Property and Fuzz Security Campaign — COMPLETE**
-**Next phase: Phase 11 — Performance — NOT STARTED**
+**Last updated: 2026-09-13**
+**Current phase: Phase 11 — Performance, Compute and Contention — COMPLETE**
+**Next phase: Phase 12 — Governance & upgrades — NOT STARTED**
 
 > This file is the first thing any contributor or model reads after `AGENTS.md`. It must always
 > reflect reality. **"Implemented" never means "verified."** The five states below are tracked
@@ -40,7 +40,7 @@ rounded up.
 | 8 | Composability | ✅ **COMPLETE** | `phase-08-composability` |
 | 9 | SDK, client & UI | ✅ **COMPLETE** | `phase-09-sdk-ui` |
 | 10 | Security campaign | ✅ **COMPLETE** | `phase-10-security` |
-| 11 | Performance | ⬜ NOT STARTED | — |
+| 11 | Performance | ✅ **COMPLETE** | `phase-11-performance` |
 | 12 | Governance & upgrades | ⬜ NOT STARTED | — |
 | 13 | Integration & release | ⬜ NOT STARTED | — |
 
@@ -123,8 +123,8 @@ No code in `programs/aegis/src` changed in this phase; every change is in `crate
 | Governance & migrations | ⬜ | ⬜ | ⬜ | ✅ | ⬜ |
 | `aegis-test-kit` (mints, market/position lifecycle, user token accounts, invariant checker, borrow-state injection, `pyth_fixture` byte-exact `PriceUpdateV2` construction, `liquidate`/`absorb_bad_debt`/`withdraw_collateral_fees` helpers) | ✅ | ✅ | ✅ | ✅ | ⬜ |
 | Invariant fuzzer (`tests/fuzz/`: 2 markets, 6 actors, 9 mutation-validated `[GLOBAL]` invariants, value-creation search) | ✅ | ✅ | ✅ | ✅ | ⬜ |
-| CU benchmarks | ⬜ | ⬜ | ⬜ | ✅ | ⬜ |
-| `labs/` (Anchor/native/Pinocchio) | ⬜ | ⬜ | ⬜ | ✅ | ⬜ |
+| CU benchmarks (`tests/bench/`, `benchmarks/cu.json`, `scripts/check-cu-regression.sh`) | ✅ | ✅ | ✅ | ✅ | ⬜ |
+| `labs/` (`vault-anchor`/`vault-native`/`vault-pinocchio`/`cu-bench`) | ✅ | ✅ | ✅ | ✅ | ⬜ |
 | TypeScript SDK (`@aegis/sdk`: codegen, pda/accounts/math/read/oracle/ix/tx/errors/events) | ✅ | ✅ | ✅ | ✅ | ⬜ |
 | Web app (`app/`: market list, position screen, deposit/borrow/repay/withdraw, demo) | ✅ | ✅ | ✅ | ✅ | ⬜ |
 | Liquidator bot | ⬜ | ⬜ | ⬜ | ✅ | ⬜ |
@@ -3926,6 +3926,286 @@ $ for s in scripts/check-*.sh; do ./"$s"; done
 
 ---
 
+## Phase 11 — evidence
+
+**Phase 11 is complete.** Scope per `docs/phases/phase-11-performance.md`: the Mollusk CU benchmark
+harness, a committed CU baseline for every current production instruction (SPL and Token-2022
+variants), PERF-I1..I6 investigated with real measurements (PERF-I6 first), PERF-C1..C3 contention
+verification, the three `labs/` custody implementations plus `labs/cu-bench`'s comparison, the CU
+regression CI gate (with a proven deliberate-failure cycle), and measurement-justified optimization
+only where justified.
+
+### 0. Phase gate (verified before any code was written)
+
+Phases 0–10 complete and tagged (`phase-10-security` = HEAD at session start); working tree clean;
+baseline `cargo fmt --all --check`, `cargo clippy --workspace --all-targets -- -D warnings`, and
+`cargo test --workspace --offline` (240 passed, 34 test-result blocks, matching Phase 10's own
+recorded baseline exactly) all green; no `tests/bench/`, no `benchmarks/`, no `labs/vault-*` —
+Phase 11 genuinely not started. Toolchain versions re-verified directly against crates.io rather
+than assumed (`docs/ecosystem-research.md` §18): `mollusk-svm` 0.15.1, `mollusk-svm-programs-token`
+0.15.1, `pinocchio` 0.11.2, `pinocchio-token` 0.7.0, `pinocchio-system` 0.6.1.
+
+### 1. PERF-I6, first — and a real finding (T-27)
+
+`tests/bench.rs::perf_i6_liquidate_worst_case`: a market with Token-2022 on both sides (2%
+transfer-fee collateral; fee-free Token-2022 loan side, the only configuration `create_market`
+accepts for a loan asset), a maximal real borrow, then a severe price crash driving the position
+into the collateral-clamp liquidation branch — built entirely through real `supply`/
+`deposit_collateral`/`borrow`/`liquidate` instructions, measured through Mollusk against the real
+compiled `aegis.so`.
+
+**First honest measurement, before any optimization: 469,137 CU — 2.3× over the 200,000 CU
+budget.** Every scenario in the full suite that touches real interest accrual was also over or
+dangerously close to budget (`repay` dt=30d: ~203–205k CU; `borrow`/`supply`/`withdraw`: 160k–184k
+CU). This is a genuine T-27-class correctness/resource-safety finding, investigated (§2 below,
+PERF-I2) and fixed (§3, OPT-01) rather than hidden by raising the compute limit, per the phase
+spec's explicit instruction.
+
+**After the fix: 109,687 CU — a 45.2% margin under budget**, and now the worst-case instruction in
+the whole benchmark suite.
+
+### 2. PERF-I1..I6 — investigated with measurements
+
+Full write-up with exact numbers and methodology: `docs/performance-strategy.md` §6. Summary:
+
+| ID | Question | Result |
+|---|---|---|
+| PERF-I6 | Does `liquidate` fit 200k CU with Token-2022 on both sides? | **Initially NO** (469,137 CU) — root-caused and fixed; **after OPT-01: YES** (109,687 CU, 45.2% margin) |
+| PERF-I2 | Cost of `mul_div` with 256-bit intermediates? | Phase 0's ~100–300 CU/call estimate was **wrong by ~2 orders of magnitude** for the as-written implementation: a 256-iteration bit-serial division loop ran on every call regardless of whether the value needed 256 bits. Root cause of PERF-I6's finding. Fixed by OPT-01. |
+| PERF-I1 | What fraction of `borrow`'s CU is oracle validation + valuation? | ~25,434 CU (~53% of `borrow`'s 48,360 CU total, post-OPT-01) — real, but not dominant with 76% margin remaining; no further action justified |
+| PERF-I3 | Token-2022 vs SPL transfer cost? | +1.7k–3k CU per transfer — small, bounded, as anticipated; document only |
+| PERF-I4 | Does the stored-bump optimization save meaningfully? | Already adopted architecturally since Phase 2 (`grep -rn find_program_address programs/aegis/src/` — zero matches); nothing to measure a delta against |
+| PERF-I5 | Cost of the mandatory post-CPI `reload()`? | Folded into every transfer-bearing benchmark; required for correctness (INV-CUS-05) regardless of cost; not isolated further given comfortable margins everywhere |
+
+### 3. OPT-01 — the one optimization, in full BEFORE/CHANGE/AFTER/DELTA/RISK form
+
+Full entry: `docs/performance-strategy.md` §7. Summary: a 4-line fast path in
+`crates/aegis-math/src/u256.rs::div_u128` (native `u128` division when the true value fits in the
+low limb — provably identical output to the existing 256-iteration bit-serial loop for that case,
+not an approximation). `accrue_interest` (dt=30d): 151,016 → 12,118 CU (−92.0%). Worst-case
+`liquidate`: 469,137 → 109,687 CU (−76.6%). Verified via the full `aegis-math` test suite
+(including the bignum-reference property test) and the full workspace suite, both unchanged and
+green after rebuilding. No invariant, economic formula, or account layout changed.
+
+No other optimization was found to be justified by measurement — every scenario has comfortable
+margin after OPT-01 alone (`AGENTS.md` §17: optimize only if measurement justifies it).
+
+### 4. CU baseline — every current production instruction
+
+`benchmarks/cu.json` (committed) / `benchmarks/README.md` (human table + methodology + limitations).
+29 scenarios across all 13 current production instructions (`ping` excluded as a Phase 1 toolchain
+proof, not production; the Phase 12 governance/pause instructions do not exist in this program yet).
+Worst case: `liquidate`, Token-2022 both sides, clamped/full-repay — 109,687 CU, 45.2% margin to the
+200,000 CU budget.
+
+```
+$ make bench
+[... full 29-scenario table, see benchmarks/README.md §5 ...]
+wrote benchmarks/cu.json
+```
+
+### 5. PERF-C1..C3 — contention, verified two ways
+
+Full evidence: `docs/performance-strategy.md` §2. Static half — `tests/bench/contention.rs`:
+
+```
+$ cargo test --test bench --offline perf_c -- --nocapture
+=== PERF-C1: disjoint writable sets across two markets (supply, two users) ===
+market A writable set: {...6 pubkeys...}
+market B writable set: {...6 pubkeys...}
+PERF-C1 confirmed: zero overlap between the two markets' writable account sets.
+test contention::perf_c1_disjoint_markets_static ... ok
+
+=== PERF-C3: write-set enumeration ===
+instruction                    market   position   fee_position   protocol
+...
+PERF-C3 confirmed: among instructions that write Market, the only OTHER writable non-vault,
+non-user-ATA account is the per-user Position — Market is the sole intra-market contention point.
+test contention::perf_c3_write_set_enumeration ... ok
+
+test result: ok. 2 passed; 0 failed
+```
+
+PERF-C2 is `A-PAR-01` (Phase 3, `tests/phase3_adversarial.rs`), re-confirmed here as part of the
+same write-set enumeration rather than duplicated as a second, independently-maintained check.
+
+Dynamic half — `bots/liquidator/src/perfC1ConcurrentDemo.ts` (`make bench-contention`, or
+`npm run perf-c1` in `bots/liquidator/`), a real local (offline, no fork) Surfpool run: two
+`supply` transactions on two different markets fired via `Promise.all` (neither awaited before the
+other is sent) both confirmed successfully, and a same-market contrast pair (two lenders supplying
+into the SAME market, also concurrent) also both succeeded — the expected result, since Solana's
+runtime queues rather than rejects concurrent writers to one account; the same-market pair rules
+out "Surfpool doesn't contend accounts at all" as a confound for the cross-market result.
+
+```
+$ npm run perf-c1
+[7] PERF-C1 static check: writable account sets from the COMPILED `supply`
+    instruction metadata (AccountMeta[], not the Rust struct)...
+    Market A writable set (6 accounts): 4VMGLc2ZETmsR8iMumwg9vNCzxjjhRF13pGadRbWbzGy,
+      HQGNLQhQRHSKf7PW1i4qDfQQBCP8TSNKwYL28U3xD5ar, x4of7nhs74dptQVrFYEwLzvSFYCjT6bWLuAXs6KXZ33,
+      Ft195nK6uQHGYEL2rJU2h8pmMyosbdUHojeNTGM7mo37, 6WKDnFEXMXX6TScZkrdzCxCMZPRundGrFvoH1gyiRXQx,
+      6Z8AiZMMC6zyinnrpXPCguMKnndqk5R7fCknsYoLdvDo
+    Market B writable set (6 accounts): 82UQxqs2bdnQWdBP9uAF3SoNhMVxrKDvEkvjDk8jK5pe,
+      yfqLjPCFBecHE3kj3PzhLNrrynY3bv9RwwoYJpFwZFv, HuAMFRhurvr4AniBAQf4LRwtxzqRoQeWYYBPvhMRd1g3,
+      7X2XDNtmZjzDP3zZzXmfGU3tRVwwHHJatHPXi6VY8o95, 2HVzKPMwF9gvrKFrNewew9ogYd2yVEAXTjt2MQnnSXUq,
+      GdJy1N9GLRVPUKD6Vs1sumGes6dXRZYy9EysDv5yPz1f
+    PASS: the two writable sets are disjoint -- zero shared addresses.
+
+[8] PERF-C1 dynamic check: submitting BOTH transactions via Promise.all so
+    neither is awaited before the other is sent...
+    slot before submission: 397
+    Market A supply: signature=5zrzfVASuRhrnLVwhBp2MQFMyZsH2yYT1uNsq7gJXiD5a4rbU4Mi2eek2fwf9N12BVbqmG8Yx7Xg9udx6kWYJufd
+      confirmationStatus=confirmed err=null slot=398
+    Market B supply: signature=xQRVGTsCQ6Wcr1N4uV8JKnj6V6k4DY7ABcwhzi14RPEtMst8odJAY4XDvLbxVZmtj4uFgUxbMAzhgZoVvhiL7sT
+      confirmationStatus=confirmed err=null slot=398
+    PASS: both cross-market transactions confirmed with no error, submitted
+    concurrently (neither awaited before the other was sent).
+
+[9] Contrast case: two DIFFERENT depositors supplying into the SAME market
+    (Market A), also fired concurrently via Promise.all...
+    shared writable accounts between the two same-market supplies: 3
+      HQGNLQhQRHSKf7PW1i4qDfQQBCP8TSNKwYL28U3xD5ar, Ft195nK6uQHGYEL2rJU2h8pmMyosbdUHojeNTGM7mo37,
+      6WKDnFEXMXX6TScZkrdzCxCMZPRundGrFvoH1gyiRXQx
+    Market A supply (depositor 2): signature=L9jEySqHd3tbwu4TsV1wg3ubXY5dTBZnSkHD9QsJ6qR7XrgcG3Q2CeuFWn7L89B1YaUj4FimcrnTowXd5a5PZ6S
+      confirmationStatus=confirmed err=null slot=408
+    Market A supply (depositor 3): signature=5mN7P1i29djPPUeTCJb4UWcnAEDGLbear5Hgzc1hjDsovH7ACXUKXvBdUG3wH8UkYELFCEc7ZJ52JKRia67TqcR6
+      confirmationStatus=confirmed err=null slot=408
+    PASS: both same-market transactions ALSO confirmed successfully -- expected
+    (Solana queues concurrent writers to a shared account rather than rejecting
+    them); PERF-C1's claim is about avoiding a shared bottleneck ACROSS markets,
+    not about same-market transactions failing.
+
+=== PERF-C1 VERIFIED ===
+```
+
+Note: the deployed `aegis.so` used for this live run was compiled for SBPFv1
+(`cargo build-sbf --arch v1`, into an isolated scratch build directory) rather than the default
+SBPFv3 this workspace's other artifacts use — a real, separately-verified finding this same work
+surfaced: the locally installed `solana` CLI (3.1.10) cannot deploy an SBPFv3 binary at all
+(`ELF error: Detected sbpf_version required by the executable which are not enabled`), confirmed
+directly (including with `--skip-feature-verify`), so this script builds its own SBPFv1 copy
+specifically for real on-chain deployment. This has no bearing on `tests/bench/`'s own CU
+measurements, which run through Mollusk's own BPF loader directly against the default-built
+artifact and never go through `solana`/`surfpool` deploy at all.
+
+### 6. `labs/` — three custody implementations, measured
+
+Full evidence and written conclusion: `docs/performance-strategy.md` §8. `vault-anchor`,
+`vault-native`, `vault-pinocchio` all implement the identical custody primitive (initialize a vault
+PDA, deposit, withdraw via a PDA-signed CPI) with equivalent security checks (signer, mint, token
+program, vault/PDA, authority, owner — verified directly by reading each lab's source, not just
+its own self-report). Each has its own `tests/basic.rs` proving the happy path and a non-owner
+withdrawal rejection.
+
+```
+$ cargo test -p vault-anchor -p vault-native -p vault-pinocchio --offline
+... 2 tests per lab, all passing ...
+
+$ cargo test -p cu-bench --offline -- --nocapture
+=== labs/cu-bench: custody primitive CU comparison ===
+lab                  initialize      deposit     withdraw
+vault-anchor              15206         8441         8541
+vault-native              12411         6134         6181
+vault-pinocchio            5263         1837         1874
+
+Native Δ vs Anchor: initialize=2795 deposit=2307 withdraw=2360
+Pinocchio Δ vs Anchor: initialize=9943 deposit=6604 withdraw=6667
+test cu_comparison ... ok
+```
+
+**Written conclusion (full reasoning in `docs/performance-strategy.md` §8): not yet.** Native is
+18–28% cheaper than Anchor; Pinocchio is 65–78% cheaper than Anchor — confirming the hypothesis and
+matching the magnitude of Anza's own `p-token` result. But Aegis's binding constraints are
+correctness (an audit surface Anchor's automatic validation makes reviewable) and contention
+(`Market` write-locking, unaffected by framework choice), not CU — every instruction has
+comfortable margin after OPT-01 alone. ADR-0003 stands: Anchor for production, native/Pinocchio
+remain lab-scoped.
+
+### 7. CU regression CI gate — built, wired into CI, and proven to fire
+
+`scripts/check-cu-regression.sh`: compares a fresh measurement (via `cu_benchmark_suite`, written
+to a scratch file, never overwriting the committed baseline) against `benchmarks/cu.json`; fails on
+a regression exceeding 10% on any scenario (exactly +10.00% passes — integer arithmetic, no
+floating point). Already wired into CI: `.github/workflows/ci.yml`'s `guards` job matches every
+`scripts/check-*.sh`, and now depends on `build-and-test` (reusing its cache) so the compiled
+program artifact this check needs is available.
+
+**Proven to actually fire**, not just implemented (`scripts/prove-cu-regression-gate.sh`):
+
+```
+$ ./scripts/prove-cu-regression-gate.sh
+=== Step 1: deliberately regress (disable OPT-01's fast path) ===
+=== Step 2: rebuild the on-chain program with the regression ===
+=== Step 3: run check-cu-regression.sh -- this MUST FAIL ===
+check-cu-regression: FAILED -- cu_benchmark_suite did not run successfully:
+[... 6 scenarios at/over the 200,000 CU budget, exactly matching the pre-OPT-01 baseline ...]
+prove-cu-regression-gate: gate correctly FAILED on the deliberate regression (expected, see output above)
+=== Step 4: restore the real code and rebuild ===
+=== Step 5: run check-cu-regression.sh again -- this MUST PASS ===
+check-cu-regression: OK — no benchmarked scenario regressed by more than 10% against the committed baseline (29 scenarios checked)
+prove-cu-regression-gate: OK — gate fired on the deliberate regression and passed after restoration
+```
+
+The deliberate regression was never committed — `crates/aegis-math/src/u256.rs` is restored from
+a backup inside the script's own `trap cleanup EXIT`, verified identical to the pre-run file after
+every invocation.
+
+### 8. INV-RES-01..07
+
+| ID | Test | Status |
+|---|---|---|
+| INV-RES-01 | `B-CU-*` (`B-CU-LIQUIDATE-WORST-CASE`, `B-CU-ALL`) | **NEW, Phase 11** — every scenario in `benchmarks/cu.json` asserted under 200,000 CU |
+| INV-RES-02 | `A-PAR-01` | Phase 3, pre-existing; re-confirmed via `tests/bench/contention.rs::perf_c3_write_set_enumeration` |
+| INV-RES-03 | `A-PAR-02` | Phase 6, pre-existing (`tests/phase6_admin.rs`) |
+| INV-RES-04 | `CI-NOLOOP` | **NEW, Phase 11** — `scripts/check-no-loop.sh`, an allowlist of the two reviewed, structurally-bounded production loops; proven to fire on an injected unreviewed loop and pass after removal |
+| INV-RES-05 | `U-ACCT-02` | Phase 2, pre-existing |
+| INV-RES-06 | `I-TX-01` | Phase 9, pre-existing |
+| INV-RES-07 | `A-CPI-01` | Phase 8, pre-existing |
+
+### 9. Full regression
+
+```
+$ cargo fmt --all --check
+(exit 0, no output)
+
+$ cargo clippy --workspace --all-targets -- -D warnings
+    Finished `dev` profile [unoptimized + debuginfo] target(s)
+(zero warnings)
+
+$ cargo test --workspace --offline
+test result: ok ... (45 test-result blocks total, up from 34 at the Phase 10 baseline: +1 for
+tests/bench.rs, +2 for the three new labs' own test binaries, +2 for cu-bench/vault-* unit-test
+scaffolding, +remainder from labs/vault-native and labs/vault-pinocchio's doc-tests)
+
+$ for s in scripts/check-*.sh; do ./"$s"; done
+(all OK, including the two new Phase 11 scripts)
+
+$ cargo test -p vault-anchor -p vault-native -p vault-pinocchio -p cu-bench --offline
+(all passing, see §6 above)
+```
+
+### 10. Deviations
+
+- **`tests/bench/`'s Mollusk methodology builds pre-state through real `LiteSVM` instructions, then
+  snapshots for the single measured call** — a refinement of `testing-strategy.md` §3's original
+  "hand-constructed account set" phrasing, made explicit and documented there, per the phase spec's
+  own requirement to "execute real instruction paths, not isolated helper functions."
+- **`liquidate`'s callback branch (Phase 8) is excluded from the worst-case CU figure** — its own
+  internal cost is the callback program's responsibility, not Aegis's, matching
+  `performance-strategy.md`'s own target-table treatment of `liquidate` as "2 CPIs" (no callback).
+  Not separately re-measured this phase as a distinct scenario; noted as a limitation in
+  `benchmarks/README.md` §8.
+- **`labs/` is classic SPL Token only**, no Token-2022 variant — a deliberate scope bound (ADR-0003:
+  "one primitive, three implementations... cannot grow into a second protocol"), matching what
+  `vault-anchor` established first.
+- No ADR was written this phase: OPT-01 is a pure algorithmic substitution inside a private helper
+  function with an unchanged public contract — no invariant, economic formula, account layout, or
+  frozen document changed. `docs/performance-strategy.md` itself was updated extensively (as its
+  own header always anticipated Phase 11 would), which is expected maintenance of a
+  hypothesis-tracking document, not a frozen-document *decision* change.
+
+---
+
 ## Next action
 
-**Phase 10 is complete. Phase 11 (Performance) has NOT been started.**
+**Phase 11 is complete. Phase 12 (Governance & upgrades) has NOT been started.**

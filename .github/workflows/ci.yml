@@ -43,9 +43,28 @@ jobs:
 
   guards:
     name: guards (grep-based invariant checks)
+    # Phase 11's scripts/check-cu-regression.sh is the first guard script that needs the real
+    # compiled program (`tests/bench.rs`'s Mollusk harness loads target/deploy/aegis.so via
+    # `include_bytes!`) -- this job now runs after build-and-test and restores its cache
+    # (same key) to reuse that artifact instead of building it a second time.
+    needs: build-and-test
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+      - name: Install pinned Rust toolchain
+        run: rustup show
+      - name: Restore the build-and-test job's cache (target/deploy/aegis.so, cargo registry)
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            ~/.local/share/solana
+            ~/.avm
+            target
+          key: ${{ runner.os }}-cargo-build-${{ hashFiles('**/Cargo.lock') }}
+      - name: Verify the cached program artifact is present
+        run: test -f target/deploy/aegis.so
       - name: Run all guard scripts
         run: |
           set -e

@@ -819,3 +819,55 @@ acceptance.
 **Decisions affected:** none change — ADR-0011 already committed to the 1232-byte design before this
 research; this section is the closing evidence for the research gate the phase spec required, not a
 new decision.
+
+---
+
+## 18. Phase 11 re-verification (2026-09-13) — CU benchmark and `labs/` tooling versions
+
+Every version below was re-verified directly against crates.io on this session's own machine at
+Phase 11's start, per AGENTS.md §11 ("verify, do not remember") — `docs/ecosystem-research.md`
+§12.2 had already recorded `mollusk-svm` 0.15.1 from Phase 1's own research, so this is a
+re-confirmation, not a first discovery, but it was re-run rather than trusted from memory:
+
+```
+$ cargo search mollusk-svm --limit 1
+mollusk-svm = "0.15.1"
+
+$ cargo search mollusk-svm-programs-token --limit 1
+mollusk-svm-programs-token = "0.15.1"
+
+$ cargo search pinocchio --limit 1
+pinocchio = "0.11.2"
+
+$ cargo search pinocchio-token --limit 1
+pinocchio-token = "0.7.0"
+
+$ cargo search pinocchio-system --limit 1
+pinocchio-system = "0.6.1"
+
+$ cargo search pinocchio-pubkey --limit 1
+pinocchio-pubkey = "0.3.0"
+
+$ cargo search spl-token-interface --limit 1
+spl-token-interface = "2.0.0"
+```
+
+**`mollusk-svm-programs-token`'s default features** (verified by reading its own `Cargo.toml`, not
+assumed) already enable `token`, `token-2022`, and `associated-token` together — a single
+dependency bundles both the real precompiled SPL Token and Token-2022 program ELFs, so
+`tests/bench/`'s Mollusk harness does not need the separate `mollusk-svm-programs-token-2022`
+crate as a direct dependency at all.
+
+**Mollusk's own default compute budget** (verified by reading `solana-program-runtime`'s
+`SVMTransactionExecutionBudget::new_with_defaults`, resolved transitively): `compute_unit_limit`
+defaults to `MAX_COMPUTE_UNIT_LIMIT` = 1,400,000 — the real network-wide per-transaction ceiling,
+**not** the 200,000 CU per-instruction default a client gets without an explicit `ComputeBudget`
+instruction. This matters directly for Phase 11's methodology: a benchmark run through Mollusk
+without further configuration measures TRUE compute consumption even when it exceeds 200,000 CU,
+rather than silently truncating at the correctness-gate threshold the benchmark exists to check
+against — confirmed empirically by PERF-I6's own first (pre-fix) measurement of 469,137 CU, which
+would have been impossible to observe if Mollusk enforced the 200k default.
+
+**Decisions affected:** none of these findings changed a design decision — they confirmed the
+already-planned tool (`mollusk-svm`) was current and correctly understood before it was used to
+produce every number in `benchmarks/cu.json`.

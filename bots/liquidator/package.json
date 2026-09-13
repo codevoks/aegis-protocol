@@ -9,7 +9,8 @@
     "build": "tsc -p tsconfig.json",
     "keeper": "tsx src/index.ts",
     "fixtures": "cargo run -p aegis-test-kit --example phase8_price_fixture_dump --manifest-path ../../Cargo.toml -- fixtures/prices.json",
-    "demo": "npm run fixtures && tsx src/demo.ts"
+    "demo": "npm run fixtures && tsx src/demo.ts",
+    "perf-c1": "tsx src/perfC1ConcurrentDemo.ts"
   },
   "dependencies": {
     "@anchor-lang/core": "1.2.0",

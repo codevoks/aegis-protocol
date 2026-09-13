@@ -1,0 +1,215 @@
+{
+  "measurements": [
+    {
+      "accounts": 3,
+      "cu": 8415,
+      "instruction": "initialize_protocol",
+      "scenario": "fresh",
+      "token_program": "n/a"
+    },
+    {
+      "accounts": 11,
+      "cu": 36489,
+      "instruction": "create_market",
+      "scenario": "fresh",
+      "token_program": "spl_token"
+    },
+    {
+      "accounts": 11,
+      "cu": 45104,
+      "instruction": "create_market",
+      "scenario": "fresh",
+      "token_program": "token_2022_both_sides"
+    },
+    {
+      "accounts": 5,
+      "cu": 11481,
+      "instruction": "init_position",
+      "scenario": "fresh_market",
+      "token_program": "n/a"
+    },
+    {
+      "accounts": 7,
+      "cu": 12708,
+      "instruction": "deposit_collateral",
+      "scenario": "existing_position",
+      "token_program": "spl_token"
+    },
+    {
+      "accounts": 7,
+      "cu": 15692,
+      "instruction": "deposit_collateral",
+      "scenario": "existing_position",
+      "token_program": "token_2022_both_sides"
+    },
+    {
+      "accounts": 9,
+      "cu": 13028,
+      "instruction": "withdraw_collateral",
+      "scenario": "no_debt",
+      "token_program": "spl_token"
+    },
+    {
+      "accounts": 9,
+      "cu": 39189,
+      "instruction": "withdraw_collateral",
+      "scenario": "with_debt_oracle_ltv",
+      "token_program": "spl_token"
+    },
+    {
+      "accounts": 9,
+      "cu": 15953,
+      "instruction": "withdraw_collateral",
+      "scenario": "no_debt",
+      "token_program": "token_2022_both_sides"
+    },
+    {
+      "accounts": 3,
+      "cu": 5075,
+      "instruction": "close_position",
+      "scenario": "empty_position",
+      "token_program": "n/a"
+    },
+    {
+      "accounts": 8,
+      "cu": 23637,
+      "instruction": "supply",
+      "scenario": "existing_market_with_accrued_interest",
+      "token_program": "spl_token"
+    },
+    {
+      "accounts": 8,
+      "cu": 23293,
+      "instruction": "withdraw",
+      "scenario": "existing_market_with_accrued_interest",
+      "token_program": "spl_token"
+    },
+    {
+      "accounts": 8,
+      "cu": 25387,
+      "instruction": "supply",
+      "scenario": "existing_market_with_accrued_interest",
+      "token_program": "token_2022_both_sides"
+    },
+    {
+      "accounts": 8,
+      "cu": 25037,
+      "instruction": "withdraw",
+      "scenario": "existing_market_with_accrued_interest",
+      "token_program": "token_2022_both_sides"
+    },
+    {
+      "accounts": 10,
+      "cu": 46628,
+      "instruction": "borrow",
+      "scenario": "healthy_borrow_against_fresh_collateral",
+      "token_program": "spl_token"
+    },
+    {
+      "accounts": 10,
+      "cu": 48360,
+      "instruction": "borrow",
+      "scenario": "healthy_borrow_against_fresh_collateral",
+      "token_program": "token_2022_both_sides"
+    },
+    {
+      "accounts": 8,
+      "cu": 21175,
+      "instruction": "repay",
+      "scenario": "dt0_partial",
+      "token_program": "spl_token"
+    },
+    {
+      "accounts": 8,
+      "cu": 24252,
+      "instruction": "repay",
+      "scenario": "dt_30d_partial",
+      "token_program": "spl_token"
+    },
+    {
+      "accounts": 8,
+      "cu": 22926,
+      "instruction": "repay",
+      "scenario": "dt0_partial",
+      "token_program": "token_2022_both_sides"
+    },
+    {
+      "accounts": 8,
+      "cu": 26003,
+      "instruction": "repay",
+      "scenario": "dt_30d_partial",
+      "token_program": "token_2022_both_sides"
+    },
+    {
+      "accounts": 2,
+      "cu": 9041,
+      "instruction": "accrue_interest",
+      "scenario": "dt0_noop",
+      "token_program": "n/a"
+    },
+    {
+      "accounts": 2,
+      "cu": 12118,
+      "instruction": "accrue_interest",
+      "scenario": "dt_30d",
+      "token_program": "n/a"
+    },
+    {
+      "accounts": 16,
+      "cu": 102902,
+      "instruction": "liquidate",
+      "scenario": "unclamped_close_factor_partial",
+      "token_program": "spl_token"
+    },
+    {
+      "accounts": 16,
+      "cu": 105118,
+      "instruction": "liquidate",
+      "scenario": "clamped_full",
+      "token_program": "spl_token"
+    },
+    {
+      "accounts": 3,
+      "cu": 12223,
+      "instruction": "absorb_bad_debt",
+      "scenario": "post_full_liquidation_dust",
+      "token_program": "n/a"
+    },
+    {
+      "accounts": 7,
+      "cu": 15523,
+      "instruction": "withdraw_collateral_fees",
+      "scenario": "full_accrued_balance",
+      "token_program": "spl_token"
+    },
+    {
+      "accounts": 16,
+      "cu": 107604,
+      "instruction": "liquidate",
+      "scenario": "unclamped_close_factor_partial",
+      "token_program": "token_2022_both_sides"
+    },
+    {
+      "accounts": 16,
+      "cu": 109687,
+      "instruction": "liquidate",
+      "scenario": "clamped_full_worst_case",
+      "token_program": "token_2022_both_sides"
+    },
+    {
+      "accounts": 7,
+      "cu": 18448,
+      "instruction": "withdraw_collateral_fees",
+      "scenario": "full_accrued_balance",
+      "token_program": "token_2022_both_sides"
+    }
+  ],
+  "meta": {
+    "anchor_cli": "1.2.0",
+    "commit": "ec97dd93c3f2ca684baceef6cb72325bb2a3c263",
+    "mollusk_svm": "0.15.1",
+    "rustc": "rustc 1.98.1 (48a229cea 2026-09-01)",
+    "solana_cli": "3.1.10"
+  },
+  "schema_version": 1
+}

@@ -10,6 +10,7 @@ skip-lint = false
 aegis = "DbRhjkZV1QSxMj5AvrYdgVsyEz8nKhoCLnSLGSKsqaF9"
 example_liquidator = "CyexeWx6KSzkD4HtCges24DYWMt8ny4wnsjvE39iao1v"
 hostile_callback = "7ryyBoBLtHDhycNeRpZntF4D43TMa76L6AXT2JWpBp5X"
+vault_anchor = "6heV9XdGiwVBqqHQBdXS4pU8WZ6g5E2sQh52BsNF9ZTQ"
 
 [provider]
 cluster = "localnet"

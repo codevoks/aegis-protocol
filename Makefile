@@ -68,9 +68,40 @@ fuzz:
 traceability:
 	./scripts/check-traceability.sh
 
-## CU benchmarks -> benchmarks/cu.json — Phase 11.
+## CU benchmarks -> benchmarks/cu.json — Phase 11. Real instructions through LiteSVM, measured
+## through Mollusk against the actual compiled aegis.so (docs/performance-strategy.md §5,
+## benchmarks/README.md). Requires `anchor build` to have produced target/deploy/aegis.so first.
 bench:
-	@echo "not implemented until Phase 11 (performance)"
+	AEGIS_BENCH_WRITE=1 cargo test --test bench --offline cu_benchmark_suite -- --nocapture
+
+## Phase 11 CU regression gate: compares tests/bench's live measurements against the committed
+## benchmarks/cu.json baseline. Fails on >10% regression on any benchmarked instruction.
+bench-check:
+	./scripts/check-cu-regression.sh
+
+## Phase 11 contention verification (PERF-C1..C3): the static Rust suite asserting compiled
+## account metadata (PERF-C1's disjoint-writable-set claim, PERF-C2's A-PAR-01 regression guard,
+## PERF-C3's write-set enumeration), plus a real, local, offline Surfpool run that actually
+## executes two markets' transactions concurrently via Promise.all (bots/liquidator/src/
+## perfC1ConcurrentDemo.ts) -- the static suite proves the design permits parallelism; this run
+## proves the validator actually exploits it. Requires `make build` first (target/deploy/aegis.so,
+## target/idl/aegis.json).
+bench-contention:
+	cargo test --test bench --offline perf_c -- --nocapture
+	cd bots/liquidator && npm run perf-c1
+
+## Phase 11 labs: build and benchmark the vault-anchor/vault-native/vault-pinocchio custody
+## primitives (docs/adr/0003-native-pinocchio-as-labs.md).
+labs-build:
+	anchor build -p vault-anchor --ignore-keys
+	cargo build-sbf --manifest-path labs/vault-native/Cargo.toml
+	cargo build-sbf --manifest-path labs/vault-pinocchio/Cargo.toml
+
+labs-test:
+	cargo test -p vault-anchor -p vault-native -p vault-pinocchio --offline
+
+labs-bench:
+	cargo test -p cu-bench --offline -- --nocapture
 
 ## Phase 7 demo: two side-by-side markets, one classic SPL collateral, one Token-2022
 ## transfer-fee (2%) collateral, run through an identical supply/deposit/borrow/accrue/liquidate/

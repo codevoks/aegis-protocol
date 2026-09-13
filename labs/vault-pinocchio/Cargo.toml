@@ -1,0 +1,47 @@
+[package]
+name = "vault-pinocchio"
+version = "0.1.0"
+description = "Phase 11 lab: the Aegis custody primitive (init/deposit/withdraw a vault PDA) in Pinocchio -- no_std, zero-dependency-by-design, benchmarked against labs/vault-anchor and labs/vault-native in labs/cu-bench"
+license = "Apache-2.0"
+edition.workspace = true
+rust-version.workspace = true
+
+[lib]
+crate-type = ["cdylib", "lib"]
+name = "vault_pinocchio"
+
+[dependencies]
+# Verified current on crates.io at Phase 11 start (2026-09-13, `cargo search pinocchio*`):
+# pinocchio 0.11.2, pinocchio-token 0.7.0, pinocchio-system 0.6.1. `cpi` feature is required
+# (not in pinocchio's own default feature set) to bring in `pinocchio::cpi::{Seed, Signer}` and
+# `pinocchio::instruction::{InstructionView, InstructionAccount}`, used for the hand-built,
+# PDA-signed `invoke_signed` calls this lab exists to demonstrate.
+pinocchio = { version = "0.11.2", features = ["cpi"] }
+pinocchio-token = "0.7.0"
+pinocchio-system = "0.6.1"
+# `pinocchio-pubkey` (0.3.0, also verified current) is deliberately NOT a dependency here: its
+# entire public API (`declare_id!`, `pubkey!`, `derive_address`) is typed in terms of
+# `pinocchio::pubkey::Pubkey` from `pinocchio` *0.9.x*, which 0.3.0 pins directly (verified via
+# its own published Cargo.toml / `cargo tree`) and never updated for 0.11's `Address`/`AccountView`
+# rename. That `Pubkey` is a structurally-identical but nominally distinct Rust type from this
+# crate's `pinocchio::Address` (0.11.2) -- passing one where the other is expected does not
+# compile without an unsafe transmute. Rather than paper over a real, currently-unresolved
+# ecosystem version mismatch with an unsafe cast, this crate declares its own `ID` directly via
+# `pinocchio::Address::from_str_const`, which `pinocchio` 0.11.2 already re-exports from
+# `solana-address` at zero extra dependency cost.
+[dev-dependencies]
+# Same crate/version set as labs/vault-anchor's dev-dependencies, for the identical LiteSVM
+# round-trip test shape.
+litesvm = "0.16"
+solana-keypair = "3"
+solana-pubkey = "4"
+solana-signer = "3"
+solana-message = "4"
+solana-transaction = { version = "4", features = ["wincode"] }
+solana-instruction = "3"
+solana-program-pack = "3"
+solana-system-interface = "3"
+spl-token-interface = "2"
+
+[lints.rust]
+unexpected_cfgs = { level = "warn", check-cfg = ['cfg(target_os, values("solana"))'] }

@@ -66,14 +66,20 @@ high-precision rational/bignum reference computed in the test (never in the prog
 
 ## 3. Tier 2 — Mollusk
 
-One test per instruction, executing that instruction alone against a hand-constructed account set.
-Purpose:
+One test per instruction, executing that instruction alone against a real account set. Purpose:
 
 1. **CU measurement** with minimal noise — the numbers that go into `benchmarks/`.
 2. **Isolated account validation** — the cheapest place to assert "this instruction rejects an account
    with the wrong owner."
 
-Mollusk is *not* used for multi-step flows; that is Tier 3's job.
+**Implementation note (Phase 11):** account state feeding the single measured instruction is built
+through REAL prior instructions in an ordinary Tier-3 `LiteSVM` world (`tests/bench/scenarios.rs`),
+then snapshotted and handed to Mollusk for the one measured call — rather than a hand-constructed
+byte literal for `Market`/`Position` — per `docs/phases/phase-11-performance.md`'s explicit
+requirement that the harness "execute real instruction paths, not isolated helper functions." A
+hand-built account risks silently drifting from what a real instruction sequence actually produces;
+this way the benchmarked state is provably reachable. Mollusk still executes exactly one
+instruction per measurement — multi-step flows remain Tier 3's job.
 
 ---
 

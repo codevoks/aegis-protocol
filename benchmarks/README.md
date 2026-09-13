@@ -1,4 +1,4 @@
-# Aegis — Compute Unit Benchmarks (Phase 11)
+# Aegis — Compute Unit Benchmarks (Phase 11, updated Phase 12)
 
 **Status: MEASURED.** Every number below comes from `tests/bench.rs`'s `cu_benchmark_suite`,
 executed against the real compiled `programs/aegis` artifact. Nothing here is estimated or
@@ -181,3 +181,71 @@ call it only against a `dt=0` no-op.)
   with the magnitude of `dt` rather than being O(1) in it; `aegis_math::irm`'s Taylor-series
   compounding is a fixed number of terms regardless of `dt`'s size, so this is not expected to
   matter, but it has not been independently re-measured at extreme `dt`.
+
+## 9. Phase 12 update — governance/pause instructions added
+
+**Status: MEASURED, re-baselined.** Phase 12 adds a read-only `protocol` account plus
+`guards::require_pause_bit_clear` to `supply`, `withdraw`, `borrow`, `withdraw_collateral`, and
+`liquidate` (INV-ADM-03/04, `docs/governance.md` §3), and adds eight new admin instructions. This
+is a real, expected, security-motivated cost increase — not an accidental regression — re-baselined
+here with committed before/after numbers per this file's own methodology rule.
+
+**BEFORE → AFTER for every scenario whose CU changed because of the new `protocol` account/pause
+check** (Phase 11 baseline → Phase 12, `git diff benchmarks/cu.json`):
+
+| Instruction / scenario | Before | After | Δ | Cause |
+|---|---|---|---|---|
+| `supply` / accrued interest, SPL | 23,637 | 27,158 | +3,521 (+14.9%) | `protocol` account load + pause check |
+| `supply` / accrued interest, Token-2022 | 25,387 | 28,910 | +3,523 (+13.9%) | same |
+| `withdraw` / accrued interest, SPL | 23,293 | 26,789 | +3,496 (+15.0%) | same |
+| `withdraw` / accrued interest, Token-2022 | 25,037 | 28,534 | +3,497 (+14.0%) | same |
+| `withdraw_collateral` / no debt, SPL | 13,028 | 15,846 | +2,818 (+21.6%) | same (cheapest scenario, so the % looks largest) |
+| `withdraw_collateral` / no debt, Token-2022 | 15,953 | 18,776 | +2,823 (+17.7%) | same |
+| `withdraw_collateral` / with debt, SPL | 39,189 | 43,052 | +3,863 (+9.9%) | same |
+| `borrow` / healthy, SPL | 46,628 | 50,645 | +4,017 (+8.6%) | same |
+| `borrow` / healthy, Token-2022 | 48,360 | 52,380 | +4,020 (+8.3%) | same |
+| `liquidate` / unclamped partial, SPL | 102,902 | 109,109 | +6,207 (+6.0%) | same (`Liquidate` also needed `Box<...>` on `protocol` and `position` — see below) |
+| `liquidate` / clamped full, SPL | 105,118 | 111,690 | +6,572 (+6.3%) | same |
+| `liquidate` / unclamped partial, Token-2022 | 107,604 | 113,813 | +6,209 (+5.8%) | same |
+| `liquidate` / clamped full (worst case), Token-2022 | 109,687 | 116,304 | +6,617 (+6.0%) | same |
+
+Every one of these stays well under 10% except the two cheapest `withdraw_collateral` scenarios
+(21.6%/17.7%) — a small absolute increase (~2,820 CU) on a small baseline reads as a large
+percentage; the *absolute* cost added is consistent across every scenario in this table
+(~2,800–6,600 CU, dominated by loading one more account and one cheap bitwise-AND check, not by
+anything that scales with market size). `scripts/check-cu-regression.sh` was re-run after
+committing this new baseline and passes (37 scenarios, `benchmarks/cu.json` is authoritative going
+forward).
+
+A handful of unrelated instructions (`create_market`, `init_position`, `repay`, `accrue_interest`,
+`absorb_bad_debt`, `close_position`, `initialize_protocol`, `deposit_collateral`) also moved by a
+few hundred CU even though Phase 12 did not touch their handlers. This is expected: the *same
+compiled program* now dispatches 22 instructions instead of 14 and carries a larger error enum and
+event set, which shifts BPF instruction-cache/jump-table layout slightly for every instruction in
+the binary — a well-known, uniform, non-security-relevant effect of adding code to a single Anchor
+program, not a per-instruction regression. All such moves are under 5% and are absorbed by the
+same re-baseline.
+
+**A real correctness finding, not merely a benchmark:** the deterministic Docker build
+(`solana-verify build`, `docs/project-status.md` §6) failed outright the first time `protocol` was
+added unboxed to `Liquidate` — `try_accounts` exceeded the SBF stack-frame limit (4096 bytes) by
+448 bytes, a real "may cause undefined behavior" compiler error under that stricter toolchain that
+this repository's own default local build did not surface. Fixed by boxing `protocol` (recovered
+384 bytes) and then `position` (recovered the remaining 64+ bytes) in `Liquidate` specifically —
+the only instruction that needed it; every other pausable instruction's unboxed `protocol` field
+compiled cleanly under the same strict build. See `docs/project-status.md` Phase 12 §6 for the full
+verifiable-build evidence this fix unblocked.
+
+**New instructions, benchmarked for the first time** (all well within the 200,000/1,400,000 CU
+budgets; none move tokens or read an oracle):
+
+| Instruction / scenario | CU | Accounts |
+|---|---|---|
+| `set_pending_admin` / fresh protocol | 4,404 | 2 |
+| `accept_admin` / fresh protocol | 4,392 | 2 |
+| `set_guardian` / fresh protocol | 4,478 | 2 |
+| `set_protocol_pause` / admin sets one bit | 4,390 | 2 |
+| `set_market_pause` / admin sets one bit | 8,670 | 3 |
+| `set_market_params` / tighten, immediate | 19,908 | 7 |
+| `commit_pending_params` / at `effective_at` | 19,173 | 6 |
+| `migrate_protocol_v2` / real `ProtocolV1` account | 5,871 | 2 |

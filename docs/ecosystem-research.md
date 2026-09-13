@@ -871,3 +871,88 @@ would have been impossible to observe if Mollusk enforced the 200k default.
 **Decisions affected:** none of these findings changed a design decision — they confirmed the
 already-planned tool (`mollusk-svm`) was current and correctly understood before it was used to
 produce every number in `benchmarks/cu.json`.
+
+## 19. Phase 12 re-verification (2026-09-13) — Anchor `Migration` primitive and `solana-verify`/OtterSec
+
+Two things Phase 12 depends on that no prior phase had touched, both re-verified against the
+actually-installed tooling on this machine rather than trusted from training-data memory
+(`anchor-lang` before 1.0 has no `Migration` type at all; per-repo AGENTS.md §11 already flags this
+exact area as high-risk).
+
+### 19.1 `anchor_lang::accounts::migration::Migration<'info, From, To>`
+
+Pinned version: `anchor-lang = "1.2.0"` (unchanged since Phase 1's original pin). Read directly from
+the installed crate source, not the Anchor docs site or training-data memory of pre-1.0 Anchor:
+
+```
+$ find ~/.cargo/registry/src -path '*anchor-lang-1.2.0*' -name 'migration.rs'
+~/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/anchor-lang-1.2.0/src/accounts/migration.rs
+```
+
+Confirmed directly from that file (`anchor-lang-1.2.0/src/accounts/migration.rs`):
+
+- `Migration::try_from` rejects an uninitialized account (`AccountNotInitialized`), an account
+  owned by the wrong program (`AccountOwnedByWrongProgram`), and — the mechanism `I-UPG-02`
+  actually relies on — an account whose bytes already carry the `To` type's discriminator (a
+  `AccountDiscriminatorMismatch`-class deserialization failure when read as `From`).
+- `.migrate(new_data)` transitions in-memory state; a second call in the same instruction returns
+  `AccountAlreadyMigrated` (Anchor's own error code 2041, not an `AegisError`).
+- Anchor's own `AccountsExit::exit` (run automatically after the handler returns) fails the whole
+  transaction with `AccountNotMigrated` (error code 2042) if `.migrate()`/`.into_inner()` was never
+  called during the instruction — there is no path through a `Migration`-typed account that leaves
+  it unmigrated and still succeeds.
+- `#[account(mut)]` is the constraint attribute the type actually supports in the official doc
+  example (paired with `realloc`, for a size-changing migration); it does **not** support a
+  declarative `seeds = [...], bump` constraint the way `Account<'info, T>` does — confirmed by the
+  absence of any such example and by this phase's own `migrate_protocol_v2.rs`, which binds the
+  canonical PDA with an explicit `Pubkey::find_program_address` check in the handler instead.
+- No realloc is required when `From::LEN == To::LEN` (this phase's case exactly:
+  `ProtocolV1::LEN == Protocol::LEN == 202`) — the doc comment's "typically used with `realloc`"
+  is conditioned on a size change, not a hard requirement of the type.
+
+**Decision affected:** confirmed the "additive-first, no realloc" migration design (governance.md
+§6 rule 1) was achievable with the real primitive before any code was written, and confirmed the
+idempotence guarantee (`I-UPG-02`) comes from the framework itself rather than needing a hand-rolled
+"already migrated" flag this repository would otherwise have to maintain and could accidentally
+skip.
+
+### 19.2 `solana-verify` / OtterSec verifiable-build workflow
+
+§1 (Phase 0) already recorded that Anchor's `verifiedBuild` now targets the OtterSec registry
+(`verify.osec.io`) and that `apr.dev` is defunct, but had not independently re-verified the actual
+CLI tool's current subcommands. Re-verified this phase by installing the tool directly (not
+assumed from memory):
+
+```
+$ cargo install solana-verify --locked
+    Installed package `solana-verify v0.5.1` (executable `solana-verify`)
+
+$ solana-verify --help
+SUBCOMMANDS:
+    build                  Deterministically build the program in a Docker container
+    close                  Close the otter-verify PDA account associated with the given program ID
+    get-buffer-hash        Get the hash of a program binary from the deployed buffer address
+    get-executable-hash    Get the hash of a program binary from an executable file
+    get-program-hash       Get the hash of a program binary from the deployed on-chain program
+    get-program-pda        Get uploaded PDA information for a given program ID and signer
+    list-program-pdas      List all the PDA information associated with a program ID
+    remote                 Send a command to a remote machine
+    verify-from-image      Verifies a cached build from a docker image
+    verify-from-repo       Builds and verifies a program from a given repository URL and a program ID
+```
+
+`solana-verify build [mount-directory]` runs a deterministic build inside the
+`solanafoundation/solana-verifiable-build` Docker image (mirrors what `anchor build --verifiable`
+uses internally) and produces a byte-reproducible `.so`. `solana-verify get-executable-hash <path>`
+and `solana-verify get-program-hash --program-id <id> --url <rpc>` each print a SHA-256-based hash;
+comparing the two directly (no network call to any third-party registry needed) is sufficient
+on-chain-vs-local verification evidence by itself. `solana-verify verify-from-repo <repo-url>
+--program-id <id>` additionally clones a given commit of a **public** git repository, rebuilds it
+the same way, and (unless `--skip-build`) writes the verification claim to an on-chain PDA plus
+optionally submits it to OtterSec's remote registry via `solana-verify remote submit-job` for public
+lookup at `verify.osec.io`.
+
+**Decisions affected:** confirmed the exact commands `I-UPG-03`'s evidence in
+`docs/project-status.md` §6 actually runs, and confirmed `apr.dev` genuinely has no CLI surface
+left to accidentally depend on — every subcommand above targets OtterSec infrastructure or a local
+Docker build, never `apr.dev`.

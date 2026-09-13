@@ -21,6 +21,7 @@ a rejected alternative worth recording. Routine implementation choices do not ne
 | [0011](0011-client-stack.md) | `@solana/kit` client stack | Accepted |
 | [0012](0012-upgrade-authority-strategy.md) | Progressive upgrade hardening; bounded admin power | Accepted |
 | [0013](0013-liquidation-callback-security-design.md) | Liquidation callback: account contract, custody model, reentrancy guard | Accepted |
+| [0014](0014-phase-12-governance-implementation-decisions.md) | Phase 12 governance: PendingMarketParams shape, timelock duration, tighten/loosen defaults, migration target | Accepted |
 
 The three most consequential are **0004** (which shapes the whole account model), **0008** (which
 shapes both security and testability), and **0005** (which makes custody exactly reconcilable).

@@ -253,9 +253,9 @@ Format: **Asset at risk · Attacker · Entry point · Prerequisite · Impact · 
 ### T-29 — Unsafe admin configuration
 - **Asset:** all market funds · **Attacker:** compromised or careless admin · **Entry:** `create_market`, `set_market_params` · **Prereq:** admin key
 - **Impact:** `max_ltv = 99%` → instantly insolvent market; `liq_bonus = 90%` → liquidators seize everything.
-- **Mitigation:** On-chain bounds validated on **every** write (INV-ADM-05), including the derived `LT·(1+b) < WAD` constraint. Phase 12 adds a timelock for risk-*increasing* changes only.
-- **Test:** `A-ADM-04` sweeps out-of-bounds parameter sets; all must be rejected.
-- **Residual:** The admin can still choose a legal-but-unwise parameter set. Bounded by the on-chain limits and, from Phase 12, delayed and publicly observable.
+- **Mitigation:** On-chain bounds validated on **every** write (INV-ADM-05), including the derived `LT·(1+b) < WAD` constraint. **Implemented, Phase 12:** risk-increasing ("loosening") changes are staged in `PendingMarketParams` behind a 48-hour timelock (`constants::PARAM_TIMELOCK_SECS`, `governance.md` §4, INV-ADM-09) and re-validated again at commit time; risk-reducing changes still apply immediately.
+- **Test:** `A-ADM-04` sweeps out-of-bounds parameter sets on both the immediate and staged paths, including the derived bound; `I-ADM-01` proves the full tighten/loosen/timelock lifecycle end to end.
+- **Residual:** The admin can still choose a legal-but-unwise parameter set. Bounded by the on-chain limits and, since Phase 12, delayed and publicly observable (`ParamsStaged` event) before a risk-increasing change takes effect.
 
 ### T-30 — Compromised upgrade authority
 - **Asset:** **everything** · **Attacker:** whoever holds the upgrade key · **Entry:** BPF loader · **Prereq:** key compromise
@@ -315,7 +315,7 @@ Consolidated, so no reader has to infer them:
 5. **T-25 dust adaptivity** — `min_debt` is static.
 6. **T-26 issuer misbehavior on a legitimately-extended mint** — acknowledged via `ack_freeze_authority`.
 7. **T-28 single-market contention DoS** — inherent to account locking; blast radius bounded by isolation.
-8. **T-29 legal-but-unwise parameters** — bounded on-chain, timelocked from Phase 12.
+8. **T-29 legal-but-unwise parameters** — bounded on-chain; risk-increasing changes timelocked (Phase 12, implemented).
 
 **Aegis v1 must not be deployed to mainnet with real user capital.** These residuals, plus the absence
 of an external audit and of quantitative risk calibration, are why.

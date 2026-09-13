@@ -62,6 +62,34 @@ Pausing is a blunt instrument that itself creates risk, so it is bounded in thre
 retrieving their own funds and is therefore the second most serious pause; it exists for suspected
 accounting-bug scenarios.
 
+### 3.1 Full pause matrix (Phase 12 implementation record)
+
+| Instruction | Protocol pause bit | Market pause bit | Callable while fully paused? |
+|---|---|---|---|
+| `supply` | `SUPPLY` | `SUPPLY` | No |
+| `withdraw` | `WITHDRAW` | `WITHDRAW` | No |
+| `borrow` | `BORROW` | `BORROW` | No |
+| `withdraw_collateral` | `WITHDRAW` | `WITHDRAW` | No |
+| `liquidate` | `LIQUIDATE` | `LIQUIDATE` | No |
+| `repay` | — (never consulted) | — (never consulted) | **Yes** |
+| `deposit_collateral` | — (never consulted) | — (never consulted) | **Yes** |
+| `absorb_bad_debt` | — (never consulted) | — (never consulted) | **Yes** |
+| `close_position` | — (never consulted) | — (never consulted) | **Yes** |
+| `init_position`, `accrue_interest` | — (never consulted) | — (never consulted) | **Yes** (never pausable; not risk-taking) |
+| `create_market`, `set_market_params`, `set_*_pause`, `set_pending_admin`, `accept_admin`, `set_guardian`, `commit_pending_params`, `withdraw_collateral_fees`, `migrate_protocol_v2` | — (admin/guardian-gated, not pause-gated) | — | **Yes** (governance/admin instructions are authorization-gated, not pause-gated) |
+
+Either `protocol.paused` or `market.paused` having the relevant bit set is sufficient to block the
+five pausable instructions — a single check against the bitwise OR of both fields
+(`guards::require_pause_bit_clear`). The four rows marked "never consulted" are not merely
+unaffected by every pause bit being set; their instruction handlers contain no reference to
+`guards::require_pause_bit_clear`, `protocol.paused`, or `market.paused` at all, and their
+`Accounts` structs do not even include a `protocol` account (ADR-0014 §5) — there is no code path
+through which a future change could accidentally start gating them without that change being a
+visible, reviewable addition of a whole new account and a whole new guard call, not the deletion of
+one `if`. `A-ADM-01` exercises this with real, on-chain state transitions: every protocol AND every
+market pause bit set, then `repay`/`deposit_collateral`/`absorb_bad_debt`/`close_position` all
+still succeed.
+
 ---
 
 ## 4. Parameter-change policy
@@ -86,7 +114,35 @@ settles under the old parameters; otherwise a fee increase would retroactively t
 earned.
 
 Feed IDs are classified as risk-increasing because swapping a feed is equivalent to swapping the
-asset's price source — the highest-leverage change an admin can make.
+asset's price source — the highest-leverage change an admin can make. `oracle_kind` is classified
+the same way, for the same reason.
+
+`close_factor`, `full_liq_hf`, `liq_protocol_fee`, and the five IRM parameters (`base_rate_ps`,
+`slope1_ps`, `slope2_ps`, `u_kink`, `max_rate_ps`) have no directional classification in this table
+— inventing one from general lending-protocol intuition is exactly what Phase 12 forbids
+(`docs/phases/phase-12-governance.md`). **Any** change to one of these fields is conservatively
+treated as risk-increasing (timelocked), regardless of direction (ADR-0014 §3). `fee_recipient` is
+not a risk parameter at all and is not part of this table — it always applies immediately,
+independent of whatever else the same call tightens or stages (ADR-0014 §4).
+
+**Timelock duration:** `constants::PARAM_TIMELOCK_SECS` — **48 hours** — is the single canonical
+value; `set_market_params` computes `effective_at` from it once, and `commit_pending_params` only
+ever reads the already-staged value back, never re-derives it (ADR-0014 §2). No frozen document
+pins an exact duration; this is Phase 12's own implementation decision.
+
+**Storage:** a loosening proposal is staged in `PendingMarketParams`, a standalone account at
+`PDA([b"pending_params", market])` — not embedded in `Market` (ADR-0014 §1). It carries every
+risk/IRM/oracle field plus `effective_at`; `fee_recipient` is never staged (see above).
+
+**Pending-proposal overwrite rule:** while a proposal is already staged for a market, a second
+loosening call is rejected outright (`PendingParamsAlreadyStaged`) — never silently overwritten or
+merged (ADR-0014 §6). The admin must wait for `commit_pending_params` to clear the existing
+proposal (at or after its `effective_at`) before staging a replacement. `commit_pending_params`
+itself is permissionless (ADR-0014 §7): by the time the timelock has elapsed, applying the
+already-public, already-fixed proposal exercises no further admin discretion. It re-validates the
+full canonical bounds against the staged values before applying them — a proposal valid when staged
+is never assumed valid forever — and closes `PendingMarketParams`, refunding its rent to
+`protocol.admin` (never to whichever address happened to submit the commit transaction).
 
 ---
 
@@ -107,6 +163,19 @@ would be exactly the kind of unsupported assertion this repository forbids.
 OtterSec registry (`verify.osec.io`) — `apr.dev` is defunct, and Anchor 1.1.1 reimplemented
 `verifiedBuild` against OtterSec. Without a verifiable build, "the source is public" says nothing
 about what is actually deployed.
+
+### 5.1 Current state (Phase 12 implementation record)
+
+A real devnet deployment exists — program ID `DbRhjkZV1QSxMj5AvrYdgVsyEz8nKhoCLnSLGSKsqaF9`
+(matches `declare_id!` exactly), upgrade authority `ALjq2DN6nipDE31uadKrSHnvpYwm54sH7LyM2VMp2vBE`.
+**Stated plainly and precisely, not rounded up:** that authority is a plain software keypair
+generated for this deployment, not a hardware wallet — this is the "first devnet deploy" milestone
+the table above uses to date Stage 1, but it is not yet true Stage-1 *key-custody* hardening. A
+real Stage 1 still requires moving that authority to an actual hardware wallet with an offline
+backup before any deployment holds real value; Stages 2–4 remain entirely future work. Full
+deployment record (transaction, program-data address, build architecture, verified hash):
+`docs/project-status.md`, Phase 12 §7. Verifiable-build evidence (local build hash == on-chain
+program hash, reproducible via `scripts/verify-build.sh`): `docs/project-status.md`, Phase 12 §6.
 
 ### The honest statement about T-30
 
@@ -131,6 +200,24 @@ Design rules:
 3. **No in-place reinterpretation.** Changing the meaning of existing bytes is forbidden; add a field
    and migrate.
 4. **Never during an emergency.** Migration under time pressure is how funds are lost.
+
+### 6.1 Phase 12 implementation record: `migrate_protocol_v2`
+
+The first real migration is `Protocol` → itself, adding one field: `schema_version: u8`, carved out
+of `_reserved` (`_reserved` shrinks `64 → 63` bytes; `Protocol::LEN` is unchanged at 202 — no
+realloc). The pre-Phase-12 layout is kept as `state::protocol::ProtocolV1`, used only as the `From`
+half of `Migration<'info, ProtocolV1, Protocol>` — no other instruction ever constructs or accepts
+a `ProtocolV1`. `Protocol` was chosen over `Market`/`Position` because it carries no economic or
+custody state (ADR-0014 §8): the migration touches admin/guardian/pause/fee-recipient bookkeeping
+only, never a balance, a share count, or a vault address.
+
+`migrate_protocol_v2` is admin-gated (the pre-migration account's own `admin` field, checked via
+`try_as_from()` before calling `.migrate()`), takes no token accounts and no mint at all, and moves
+no funds (`A-ADM-01`'s "no rescue path" mandate extends here too — this instruction transforms
+schema, nothing else). Idempotence (`I-UPG-02`) comes from the `Migration` primitive itself: an
+already-migrated account no longer deserializes as `ProtocolV1` (its bytes now carry `Protocol`'s
+own Anchor discriminator), so a second attempt fails at account validation, before the handler body
+ever runs — not a hand-rolled "already migrated" check that a future edit could accidentally skip.
 
 ---
 

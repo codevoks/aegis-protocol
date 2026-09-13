@@ -1,8 +1,8 @@
 # Aegis — Project Status
 
 **Last updated: 2026-09-13**
-**Current phase: Phase 11 — Performance, Compute and Contention — COMPLETE**
-**Next phase: Phase 12 — Governance & upgrades — NOT STARTED**
+**Current phase: Phase 12 — Governance, Upgrades and Migrations — COMPLETE**
+**Next phase: Phase 13 — Integration & release — NOT STARTED**
 
 > This file is the first thing any contributor or model reads after `AGENTS.md`. It must always
 > reflect reality. **"Implemented" never means "verified."** The five states below are tracked
@@ -41,7 +41,7 @@ rounded up.
 | 9 | SDK, client & UI | ✅ **COMPLETE** | `phase-09-sdk-ui` |
 | 10 | Security campaign | ✅ **COMPLETE** | `phase-10-security` |
 | 11 | Performance | ✅ **COMPLETE** | `phase-11-performance` |
-| 12 | Governance & upgrades | ⬜ NOT STARTED | — |
+| 12 | Governance, upgrades & migrations | ✅ **COMPLETE** | `phase-12-governance` |
 | 13 | Integration & release | ⬜ NOT STARTED | — |
 
 **Phase 3 is complete.** `deposit_collateral`, `withdraw_collateral` (zero-debt path only), and
@@ -4206,6 +4206,271 @@ $ cargo test -p vault-anchor -p vault-native -p vault-pinocchio -p cu-bench --of
 
 ---
 
+## Phase 12 — Governance, Upgrades and Migrations
+
+**Status: COMPLETE.** Two-step admin transfer, guardian-only pause-setting, `set_market_params`
+with the tighten/loosen timelock asymmetry, one real Anchor 1.2.0 `Migration<'info, From, To>`
+account schema migration, and a genuine devnet verifiable build.
+
+### 1. Admin/governance instructions (IMPLEMENTED, TESTED)
+
+`set_pending_admin`, `accept_admin`, `set_guardian`, `set_protocol_pause`, `set_market_pause`,
+`set_market_params`, `commit_pending_params`, `migrate_protocol_v2` — all eight new instructions in
+`programs/aegis/src/instructions/admin/`, wired in `lib.rs`.
+
+```
+$ cargo test -p aegis --lib
+test result: ok. 50 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out
+
+$ cargo test --test phase12_admin_transfer
+test result: ok. 13 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out
+
+$ cargo test --test phase12_pause
+test result: ok. 7 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out
+
+$ cargo test --test phase12_params
+test result: ok. 9 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out
+
+$ cargo test --test phase12_migration
+test result: ok. 8 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out
+```
+
+### 2. Two-step admin transfer
+
+`set_pending_admin` writes only `pending_admin`; `accept_admin` requires `signer ==
+protocol.pending_admin` exactly (`A-AUTH-05`), sets `admin`, and clears `pending_admin` in the same
+instruction — which is also what makes a replayed `accept_admin` fail (the old pending admin no
+longer matches the cleared field). There is no single-transaction `set_admin` instruction anywhere
+in `lib.rs` (`no_single_step_set_admin_instruction_exists`, a structural grep-based test).
+
+### 3. Pause architecture and the guardian asymmetry
+
+`guards::require_authorized_pause_change` implements the rule directly: undefined bits are rejected
+unconditionally (`A-ADM-05`); the admin may set or clear any combination of the four defined bits;
+the guardian may only add bits (`new_paused` must be a superset of `old_paused`) — clearing even
+one already-set bit as the guardian fails with the exact `GuardianCannotClearPause` error
+(`A-AUTH-04`).
+
+**INV-ADM-04, the load-bearing property of this phase:** `repay`, `deposit_collateral`,
+`absorb_bad_debt`, and `close_position` do not import `guards::require_pause_bit_clear` at all, and
+their `Accounts` structs carry no `protocol` field — there is no code path through which pause state
+could reach these handlers (ADR-0014 §5). `A-ADM-01` proves this with real on-chain state: a lender
+supplies, a borrower deposits collateral and borrows, a second position is seeded with real bad debt
+(`seed_borrow_state`, the same legitimate injection technique Phase 4/6 already established), every
+protocol pause bit AND every market pause bit are set, and all four safety exits still succeed —
+while `supply`/`borrow` fail with `OperationPaused` in the same paused state. `A-ADM-03` and a
+companion test separately confirm `borrow`/`supply`/`withdraw`/`withdraw_collateral`/`liquidate`
+each fail with the exact same error under their own specific pause bit.
+
+### 4. `set_market_params` / `commit_pending_params`
+
+`accrue_mut` runs under the current (about-to-be-superseded) parameters before anything else reads
+or writes a parameter this instruction might change (INV-ADM-07, `U-ADM-01` — both the immediate
+and delayed-commit paths are tested with real nonzero elapsed time and nonzero utilization, each
+checked against `Market::accrue_view`'s own prediction). The canonical bounds validators
+(`Market::validate_risk_params`/`validate_irm_params`/`validate_oracle_config` — the exact same
+functions `create_market` uses) are re-run on every write, immediate or staged, including the
+derived liquidation bound (`A-ADM-04`, tested on both paths). Identity fields (mints, token
+programs, vaults, decimals, `config_id`) have no field in `SetMarketParamsArgs` at all — not merely
+rejected at runtime, structurally absent (`A-ADM-06`, both a byte-level struct-size assertion and a
+before/after on-chain field comparison).
+
+Risk-increasing ("loosening") changes are staged in a standalone `PendingMarketParams` account
+(`PDA([b"pending_params", market])`) behind a 48-hour timelock (`constants::PARAM_TIMELOCK_SECS`);
+risk-reducing ("tightening") changes apply immediately. `I-ADM-01` runs the full lifecycle: tighten
+→ immediate; loosen → active params unchanged, pending populated; commit one second before
+`effective_at` → `PendingParamsNotYetEffective`; commit at `effective_at` → succeeds, bounds
+re-validated again, pending state cleared. A second loosening proposal while one is already pending
+is rejected (`PendingParamsAlreadyStaged`) rather than silently overwritten or merged (ADR-0014 §6).
+
+### 5. Account migration: `migrate_protocol_v2`
+
+Verified against the actual installed `anchor-lang 1.2.0` source
+(`~/.cargo/registry/.../anchor-lang-1.2.0/src/accounts/migration.rs`), not training-data memory of
+pre-1.0 Anchor, which had no such primitive. `Protocol` gained `schema_version: u8`, carved out of
+`_reserved` (`64 → 63` bytes; `Protocol::LEN` unchanged at 202 — no realloc). The pre-Phase-12
+layout is kept as `ProtocolV1`, used only as the `Migration<'info, ProtocolV1, Protocol>`'s `From`
+half.
+
+```
+$ cargo test --test phase12_migration
+test i_upg_01_migration_preserves_every_field_and_initializes_schema_version ... ok
+test i_upg_02_second_migration_attempt_is_rejected ... ok
+test migration_requires_the_real_admin_signer ... ok
+test migration_rejects_account_owned_by_the_wrong_program ... ok
+test migration_rejects_corrupted_old_data ... ok
+test migration_rejects_unsupported_version_garbage_discriminator ... ok
+test migration_rejects_a_nonexistent_account ... ok
+test migration_accounts_struct_has_no_token_or_vault_fields ... ok
+test result: ok. 8 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out
+```
+
+`I-UPG-01`: a real `ProtocolV1` account is injected (`svm.set_account`, the same legitimate
+technique `state_injection.rs` established for otherwise-unreachable prior-schema states — no real
+transaction in an already-Phase-12 codebase can produce a `ProtocolV1` account any other way), then
+migrated via a real transaction; every preserved field is checked byte-for-byte, `schema_version` is
+initialized, the PDA address and program ownership are unchanged, and the account size is identical
+before and after (no realloc). `I-UPG-02`: a second migration attempt on the now-migrated account
+fails — Anchor's own `AccountDiscriminatorMismatch`, because the account now carries `Protocol`'s
+discriminator, not `ProtocolV1`'s — not a silent no-op.
+
+### 6. Verifiable build (INV-UPG-05, I-UPG-03)
+
+Tooling re-verified directly (`docs/ecosystem-research.md` §19.2), not assumed: `solana-verify
+0.5.1`, installed via `cargo install solana-verify --locked`. `apr.dev` is not referenced anywhere
+in this workflow — every command targets a local Docker build or the OtterSec `verify.osec.io`
+infrastructure.
+
+**Two real defects the Docker build's stricter toolchain caught that this repository's own local
+build did not, both fixed before the final deployment below:**
+
+1. `Liquidate::try_accounts` exceeded the SBF stack-frame limit (4096 bytes) by 448 bytes after
+   `protocol` was added unboxed, a genuine "may cause undefined behavior during execution" compiler
+   error. Fixed by boxing `protocol` and (still 64 bytes over) `position` in
+   `programs/aegis/src/instructions/liquidate/liquidate.rs` — the only instruction of the five
+   pausable ones that needed it. Full before/after CU accounting: `benchmarks/README.md` §9.
+2. `set_market_params`'s `PendingMarketParams` account creation used a raw
+   `anchor_lang::solana_program::program::invoke_signed` call — caught not by the Docker build
+   itself but by `scripts/check-cpi-allowlist.sh` (INV-RES-07/A-CPI-01) run immediately afterward,
+   which asserts no raw `invoke_signed` exists anywhere in `programs/aegis/src` outside the audited
+   `CpiContext`-based helpers. Fixed by switching to `anchor_lang::system_program::create_account`
+   with `CpiContext::new(...).with_signer(...)` — the exact pattern `token/vault.rs`'s
+   `create_vault` already uses for its own PDA-signed account creation, not a new one.
+
+Both fixes required a second, then a third, Docker rebuild — the hash below is from the final
+build, after both fixes, and is what is actually deployed.
+
+```
+$ cargo install solana-verify --locked
+    Installed package `solana-verify v0.5.1` (executable `solana-verify`)
+
+$ solana-verify build --library-name aegis --arch v1
+...
+    Finished `release` profile [optimized] target(s) in 19.72s
+Finished building program
+Program Solana version: v4.0.0
+Docker image Solana version: v4.0.0
+d204bb910eecead8a0b87321f294daaf021bb596e0699a3ffb8dd3bfce8ed099
+
+$ solana-verify get-executable-hash target/deploy/aegis.so
+d204bb910eecead8a0b87321f294daaf021bb596e0699a3ffb8dd3bfce8ed099
+
+$ solana-verify get-program-hash DbRhjkZV1QSxMj5AvrYdgVsyEz8nKhoCLnSLGSKsqaF9 --url https://api.devnet.solana.com
+d204bb910eecead8a0b87321f294daaf021bb596e0699a3ffb8dd3bfce8ed099
+```
+
+**The local reproducible build and the live devnet program hash byte-for-byte identically.** This
+is real, not fabricated: a program is actually deployed at `DbRhjkZV1QSxMj5AvrYdgVsyEz8nKhoCLnSLGSKsqaF9`
+on devnet (see §7), and its on-chain bytes were independently hashed via `solana-verify
+get-program-hash` against a live RPC call, matching the locally-built artifact's own hash exactly.
+`scripts/verify-build.sh` reproduces this entire check in one command (I-UPG-03, tagged
+network-dependent/optional-tier, never part of `make test` — `docs/zero-cost-demo.md` §8):
+
+```
+$ ./scripts/verify-build.sh
+verify-build: building deterministically (solana-verify build --arch v1)...
+...
+verify-build: local reproducible-build hash: d204bb910eecead8a0b87321f294daaf021bb596e0699a3ffb8dd3bfce8ed099
+verify-build: fetching the deployed program's on-chain hash (DbRhjkZV1QSxMj5AvrYdgVsyEz8nKhoCLnSLGSKsqaF9 @ https://api.devnet.solana.com)...
+verify-build: on-chain program hash: d204bb910eecead8a0b87321f294daaf021bb596e0699a3ffb8dd3bfce8ed099
+verify-build: OK -- local reproducible build matches the deployed devnet program exactly (d204bb910eecead8a0b87321f294daaf021bb596e0699a3ffb8dd3bfce8ed099)
+```
+
+**I-UPG-03 / INV-UPG-05: satisfied**, against a real devnet deployment — not a local-only build
+with the live-verification step honestly marked blocked (the original fallback plan, superseded
+once devnet SOL became available; see §7 for how that was obtained).
+
+### 7. Deployment and upgrade authority
+
+**Stage 0 → a real Stage-1-shaped devnet deployment** (`governance.md` §5). Honest characterization:
+the upgrade authority below is a plain software keypair generated for this deployment, not a
+hardware wallet — this deployment demonstrates the "first devnet deploy" milestone and the
+verifiable-build workflow end-to-end; it does **not** claim true Stage-1 key-custody hardening.
+Real Stage 1 (a hardware wallet) and Stages 2-4 remain future work, exactly as `governance.md` §5
+already states.
+
+| Field | Value |
+|---|---|
+| Network | Solana devnet (`https://api.devnet.solana.com`) |
+| Program ID | `DbRhjkZV1QSxMj5AvrYdgVsyEz8nKhoCLnSLGSKsqaF9` (matches `declare_id!` in `programs/aegis/src/lib.rs` exactly — no identity mismatch) |
+| Upgrade authority | `ALjq2DN6nipDE31uadKrSHnvpYwm54sH7LyM2VMp2vBE` (a plain devnet-only software keypair, generated for this deployment; not committed to this repository, per AGENTS.md §19) |
+| Initial deploy transaction | `373TuyccCxrkT4V5oJEUiUwPJ9KrAv9gWpmkMQMmTE3dycMXbMYsvRXAUHrgpDyYQXaHDiGqhoE9v3KTnFnEDcwD` (pre-CPI-fix build) |
+| Final upgrade transaction | `4Cg5wgHbshWGzMMBZfB8yJ3HKPUwXM68ZxGwta6ZHCUvZPS93rFc8P4EMZ3A3z93ommzP5V91cwHZCaimS4e7XR4` (after both fixes in §6 — this is what is live now) |
+| Data length | 704,616 bytes |
+| Program-data account | `9861ArMX2CQE4SA2iPk3hBZzvM2Xu52RooriGdvHrLXs` |
+| Build architecture | SBPFv1 (`solana-verify build --arch v1`) — this machine's installed `solana` CLI (3.1.10) cannot deploy an SBPFv3 binary at all (`ELF error: Detected sbpf_version required by the executable which are not enabled`), an independently-reproduced instance of the exact same finding `docs/project-status.md`'s Phase 11 section already recorded for `cargo build-sbf`'s own default target |
+| Verified hash | `d204bb910eecead8a0b87321f294daaf021bb596e0699a3ffb8dd3bfce8ed099` (matches the local deterministic build exactly, post-fix — see §6) |
+
+No mainnet deployment exists or was created. `docs/governance.md` §5's upgrade-authority
+progression table has been updated to reflect this real devnet deployment, not merely the
+hypothetical version that existed before Phase 12.
+
+### 8. Documentation updated
+
+`docs/governance.md` (full pause matrix §3.1, concrete timelock/storage/overwrite rules §4,
+concrete migration record §6.1, real deployment/upgrade-authority record §5), `docs/adr/0014-*.md`
+(new — the implementation decisions the phase spec left open), `docs/adr/README.md`,
+`docs/ecosystem-research.md` (§19, OtterSec/`solana-verify` re-verification), `docs/invariants.md`
+(evidence column), `docs/threat-model.md` (evidence for T-29), `benchmarks/README.md`/`cu.json` (new
+instructions benchmarked).
+
+### 9. Security and performance regression
+
+```
+$ ./scripts/check-traceability.sh
+check-traceability: OK — 97 test id(s) referenced by docs/invariants.md (phase <= 12) all exist
+
+$ ./scripts/check-cu-regression.sh
+check-cu-regression: OK — no benchmarked scenario regressed by more than 10% against the committed baseline (37 scenarios checked)
+
+$ cargo test --workspace
+test result: ok ... (49 test-result blocks, 308 individual tests passed, 0 failed, 4 ignored [network-tagged/optional-tier])
+
+$ cargo fmt --all --check
+(exit 0, no output)
+
+$ cargo clippy --workspace --all-targets -- -D warnings
+(zero warnings)
+```
+
+### 10. Non-vacuity (targeted mutation, reverted before commit)
+
+Five targeted mutations, each applied, confirmed to make the intended test fail with real command
+output, then reverted (`git status` clean before and after; no mutation was ever committed):
+
+| # | Mutation | Result |
+|---|---|---|
+| 1 | Removed the guardian's superset check in `guards::require_authorized_pause_change` | `a_auth_04_guardian_can_set_but_not_clear` (unit) and both `a_auth_04_*` integration tests FAILED — guardian could clear pause bits |
+| 2 | Wired a market-pause check into `repay`'s handler | `a_adm_01_safety_exits_succeed_with_every_pause_bit_set` FAILED — `repay` returned `OperationPaused` |
+| 3 | Commented out `Market::validate_risk_params` in `set_market_params` | `a_adm_04_invalid_params_rejected_with_exact_errors` and `a_adm_04_derived_bound_rejected_on_staged_path_too` FAILED — invalid/unsafe params were silently accepted |
+| 4 | Added a `collateral_mint: Pubkey` field to `SetMarketParamsArgs` and applied it to `market.collateral_mint` | `a_adm_06_identity_fields_have_no_field_in_set_market_params_args` (struct-size assertion, 303→335 bytes) and `a_adm_06_identity_fields_are_unchanged_after_set_market_params` (runtime field comparison) both FAILED |
+| 5 | Forced the loosening branch's condition to `false` (`if false && is_loosening(...)`) | `i_adm_01_full_tighten_loosen_timelock_lifecycle` FAILED — a loosening change applied immediately instead of staging |
+
+Every mutation was reverted via a byte-identical restore from a pre-mutation backup (`diff` run
+against the backup after restoring, confirmed identical) before the next mutation was attempted;
+the final `git status` after all five shows only the legitimate Phase 12 changes, no mutation
+residue.
+
+### 11. Deviations
+
+- `instruction-catalogue.md`'s `repay` account-list row lists a `[R][PDA] protocol` account that
+  `repay`'s actual `Accounts` struct does not have — a deliberate, documented narrowing (ADR-0014
+  §5) in the direction INV-ADM-04 requires, not an oversight. `deposit_collateral`/
+  `absorb_bad_debt`/`close_position`'s documented rows never included `protocol` in the first
+  place.
+- The exact 48-hour timelock duration, the `PendingMarketParams`-as-separate-account storage shape,
+  the conservative "unclassified field ⇒ loosening" default, and the pending-proposal
+  reject-not-overwrite rule are all Phase 12 implementation decisions filling gaps the frozen
+  documents left open — recorded in ADR-0014, not silently guessed.
+- No mainnet deployment; devnet only, per the phase's own "do not spend real funds unnecessarily"
+  instruction and `governance.md` §5's own roadmap (Aegis v1 targets Stage 1).
+
+### 12. Next action
+
+**Phase 12 is complete. Phase 13 has NOT been started.**
+
+---
+
 ## Next action
 
-**Phase 11 is complete. Phase 12 (Governance & upgrades) has NOT been started.**
+**Phase 12 is complete. Phase 13 (Integration & release) has NOT been started.**

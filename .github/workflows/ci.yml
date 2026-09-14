@@ -115,6 +115,25 @@ jobs:
       - name: Verify the IDL was generated
         run: test -f target/idl/aegis.json
 
+      - name: Build the labs/ programs cargo test --workspace needs
+        # Phase 13 finding: only `aegis.so` was ever built explicitly here. `cargo test
+        # --workspace` also needs example_liquidator.so/hostile_callback.so (Phase 8's
+        # tests/phase8_hostile_callback.rs) and vault_anchor.so/vault_native.so/
+        # vault_pinocchio.so (Phase 11's labs/vault-*/tests/basic.rs), all via `include_bytes!`.
+        # This job's persistent cache (below) made that invisible on every run since whichever
+        # one first happened to build them locally before this step existed -- a genuinely
+        # cache-cold run (a fresh Cargo.lock hash, or the cache evicted) would otherwise fail
+        # with "No such file or directory", exactly as Phase 13's clean-clone reproduction test
+        # found locally. Matches `make build` exactly, kept as explicit steps here (rather than
+        # invoking `make build`, which would re-run `anchor build` a second time) to avoid a
+        # second, redundant `anchor build` invocation in the same job.
+        run: |
+          cargo build-sbf --manifest-path labs/example-liquidator/Cargo.toml
+          cargo build-sbf --manifest-path labs/hostile-callback/Cargo.toml
+          cargo build-sbf --manifest-path labs/vault-anchor/Cargo.toml
+          cargo build-sbf --manifest-path labs/vault-native/Cargo.toml
+          cargo build-sbf --manifest-path labs/vault-pinocchio/Cargo.toml
+
       - name: cargo test -p aegis-math
         run: cargo test -p aegis-math
 

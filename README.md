@@ -66,10 +66,16 @@ it is conventional.
 git clone https://github.com/codevoks/aegis-protocol.git
 cd aegis-protocol
 make setup   # prints the exact pinned toolchain versions this repo expects
-make build   # anchor build + the two Phase 8 labs/ programs
-make test    # cargo test --workspace -- offline, no network, no secrets. ~309 tests.
+make build   # anchor build + five labs/ comparison programs -- ~8 min on a cold target/
+make test    # cargo test --workspace -- offline, no network, no secrets. 309 tests, ~5 min.
 make demo    # the complete zero-cost-demo.md §5 scenario, offline, with a live invariant/CU report
 ```
+
+**Timing, measured on a clean clone, not estimated:** `make build` + `make test` + `make demo`
+together take **~16 minutes** with the toolchain and Cargo registry already installed/cached but a
+cold `target/` — `make build` alone is most of it (five separate on-chain programs compiled from
+scratch). This is **over** a 15-minute reproduction target; disclosed here rather than rounded
+down. Full breakdown: [`docs/evidence/clean-clone-reproduction.txt`](docs/evidence/clean-clone-reproduction.txt).
 
 **Prerequisites**, stated precisely (`docs/phases/phase-01-foundation.md` §3,
 `docs/ecosystem-research.md`): Rust 1.98.1 (via `rustup`), Solana CLI (Agave) 3.1.10, Anchor CLI
@@ -172,7 +178,7 @@ explicitly heavier, separately invoked commands, run pre-tag rather than on ever
 
 ```bash
 make test              # the release-critical suite -- what CI runs on every push
-make fuzz               # the extended 100,000-operation campaign (~12 minutes)
+make fuzz               # the extended 100,000-operation campaign (~5-12 minutes, machine-dependent)
 ./scripts/check-traceability.sh   # invariant -> test-ID build-enforced contract
 ```
 

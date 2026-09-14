@@ -1,0 +1,81 @@
+Aegis Protocol -- Phase 13 clean-clone reproduction log
+Captured: 2026-09-14, this Phase 13 session.
+Method: `git clone` the local repository (at the exact release commit) into a fresh directory
+under /tmp with no reused target/, no reused node_modules, no .env, no manually pre-created
+accounts, no cached generated IDL beyond what the build step itself produces. Toolchain
+(rustc/solana/anchor/node) and the ~/.cargo registry were already installed/warm on this machine
+(the documented prerequisite), matching the realistic "reader who followed the prerequisites
+section" scenario -- NOT a fully cold OS/toolchain install, which this session did not attempt.
+-------------------------------------------------------------------------------------------------
+
+## Attempt 1 -- found a real defect
+
+`make build && make test` failed outright:
+
+  error: couldn't read `/private/tmp/aegis-clean-clone/labs/vault-pinocchio/../../target/deploy/vault_pinocchio.so`: No such file or directory (os error 2)
+  error: could not compile `vault-pinocchio` (test "basic") due to 1 previous error
+  error: could not compile `vault-native` (test "basic") due to 1 previous error
+  make: *** [test] Error 101
+
+Root cause: `labs/vault-native` and `labs/vault-pinocchio` (Phase 11, plain Cargo crates, not
+Anchor programs) were never built by `make build` -- only by the separate `labs-build` target,
+which the documented quickstart does not call. Masked in every session that inherited an
+already-built `target/` (including this one's own main working copy, and GitHub Actions' CI cache).
+
+## Attempt 2 -- fix #1 was itself incomplete
+
+Added `cargo build-sbf` calls for vault-native/vault-pinocchio to `make build`. Re-testing found
+`vault_anchor.so` (a THIRD labs program, also needed by `labs/vault-anchor/tests/basic.rs`) was
+missing too -- `anchor build` does not build it despite it being listed in `Anchor.toml`'s
+`[programs.localnet]`, because Anchor's own workspace discovery only looks under `programs/`.
+
+## Attempt 3 -- fix #2 was ALSO broken
+
+The obvious fix (`anchor build -p vault-anchor --ignore-keys`, matching the pre-existing but,
+it turned out, never-successfully-exercised `labs-build` target) fails with:
+
+  Error: vault-anchor is not part of the workspace
+
+Fixed to `cargo build-sbf --manifest-path labs/vault-anchor/Cargo.toml` instead (the same pattern
+already used for the other non-`programs/` labs), verified directly to produce
+`target/deploy/vault_anchor.so`. Applied to both `make build` and `labs-build`. Also fixed the
+identical latent gap in `.github/workflows/ci.yml`'s build-and-test job, which has the same
+`anchor build` + `cargo test --workspace` shape and would fail identically on any cache-cold CI
+run (a new Cargo.lock hash, or the cache simply being evicted) -- its persistent `actions/cache`
+had silently supplied these five .so files on every run since whichever one first built them.
+
+## Attempt 4 -- clean, full, end-to-end, timed
+
+Fresh clone at the fully-fixed commit (9830cd9 and beyond):
+
+  $ make setup     -- 0s (prints installed toolchain versions)
+  $ make build     -- 476s   (=== build done at 476s ===)
+  $ make test      -- +278s  (=== test done at 754s ===)  -- 309 tests, 0 failed
+  $ make demo      -- +228s  (=== demo done at 982s ===)  -- all 16 steps, 0 invariant assertion
+                                                              failures other than the documented,
+                                                              expected F-13-01 print
+  TOTAL: 982s = 16 minutes 22 seconds
+
+## Conclusion vs. the under-15-minutes target
+
+**Does NOT meet the under-15-minute goal — stated plainly, not rounded down.** 16m22s for
+clone → setup → build → test → demo, with a warm toolchain and cargo registry cache (the
+documented prerequisite state) but a cold `target/`. `make build` alone (7m56s) is the majority
+of the time and the reason: five separate SBF programs, several pulling in large dependency
+trees (`anchor-spl`, `pyth-solana-receiver-sdk`, `pinocchio`) that must each be compiled to the
+BPF target from scratch when `target/` does not yet exist. This is inherent to compiling this many
+real on-chain programs, not a padding or inefficiency introduced by this phase's changes -- and
+this phase's own fix (building three previously-unbuilt labs programs) made the number WORSE, not
+better, than an (incorrectly) passing clean-clone claim would have shown, because the previous
+state simply failed rather than being fast.
+
+If genuine sub-15-minute reproduction of the CORE claim (the protocol itself: build the one
+production program, run its tests, run its demo) is the goal rather than the full workspace
+including all three comparison labs, the relevant subset is faster: `anchor build` (the aegis
+program alone) plus `cargo test -p aegis -p aegis-math -p aegis-test-kit` plus `make demo`:
+not separately re-measured this phase (measuring yet another variant was judged lower value than
+disclosing the real, full-workspace number honestly), but bounded above by 16m22s and, given
+`labs-build`'s three programs are a meaningful fraction of that time (verified individually
+earlier in this session: vault-native ~37s, vault-pinocchio ~1s reusing a warm registry,
+vault-anchor ~2m27s from a cold registry), plausibly under 15 minutes on its own. Not claimed as
+a measured result here.

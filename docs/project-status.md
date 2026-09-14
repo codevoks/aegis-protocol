@@ -4752,15 +4752,48 @@ liquidator bot compile, `make demo`, `make fuzz`) — every command and its real
 `docs/evidence/release-regression.txt`. Final tally: **309 Rust tests + 72 TypeScript tests, 0
 failed**, CU regression clean (37 scenarios), all guard scripts pass, app and SDK build clean.
 
+### 13a. Clean-clone reproduction — found and fixed three real build-tooling defects
+
+`git clone`d the local repository into a fresh directory (no reused `target/`, no reused
+`node_modules`, no `.env`, no pre-created accounts) and ran the documented quickstart literally.
+**`make build && make test` failed outright** on the first attempt: `labs/vault-native` and
+`labs/vault-pinocchio` (Phase 11) were never built by `make build`, only by the separate,
+undocumented-in-the-quickstart `labs-build` target. Fixing that surfaced a second, then a third
+bug in the same area — `vault-anchor` was assumed built by plain `anchor build` because it is
+listed in `Anchor.toml`, which is false (Anchor's workspace discovery only looks under
+`programs/`), and the obvious fix for that (`anchor build -p vault-anchor --ignore-keys`, matching
+the pre-existing `labs-build` target) itself fails ("not part of the workspace"). All three fixed
+to `cargo build-sbf --manifest-path`, verified individually and then via a full clean-clone
+re-run. The identical latent gap in `.github/workflows/ci.yml` (masked by its own persistent
+`actions/cache` since whichever run first built these five artifacts) was fixed the same way.
+
+Full, final, clean-clone timing (warm toolchain/cargo-registry, cold `target/` — the realistic
+"prerequisites already installed" case):
+
+```
+make setup   0s
+make build   476s  (7m56s)
+make test    +278s (309 tests, 0 failed)
+make demo    +228s (all 16 steps, 0 unexpected assertion failures)
+TOTAL        982s = 16m22s
+```
+
+**This exceeds the "under 15 minutes" target — stated plainly.** `make build` alone accounts for
+most of it: five separate SBF programs, several with large dependency trees, compiled from
+scratch to the BPF target. Full analysis: `docs/evidence/clean-clone-reproduction.txt`.
+
 ### 14. Deviations
 
 - No protocol logic was changed. F-13-01 was investigated and documented, not fixed, per its own
   stated rationale (fixing it would touch the frozen `economic-model.md` §8.2 settlement formula
   for a purely cosmetic gain — out of Phase 13's reconciliation-not-redesign mandate).
+- Three real build-tooling defects (§13a) were found by the clean-clone reproduction test and
+  fixed (`Makefile`'s `build`/`labs-build` targets, `.github/workflows/ci.yml`) — build
+  orchestration only, zero protocol-logic changes, in scope as reconciliation (making the
+  documented commands actually work) rather than a new feature.
 - A full re-run of all nine [GLOBAL] mutation gates was scoped down to three representative ones
   (§8) for session time-budget reasons, disclosed rather than rounded up.
-- The extended (100,000-op) fuzz campaign's Phase 13 status is recorded in the final report, not
-  here, for the reason stated in §13.
+- The extended (100,000-op) fuzz campaign was re-run fresh this phase (§13): zero violations.
 
 ### 15. Next action
 

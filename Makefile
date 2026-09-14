@@ -33,10 +33,23 @@ setup:
 ## program's real identity or running `anchor keys sync`, both of which are identity decisions for
 ## the maintainer, not a Phase 8 code change. `anchor build` is left plain below so this warning
 ## stays visible; run `anchor build --ignore-keys` manually if you need to build past it locally.
+##
+## NOTE (found in Phase 13's clean-clone reproduction test): `vault-native`/`vault-pinocchio`
+## (Phase 11's `labs/`, plain Cargo crates, not Anchor programs) were missing from this target
+## entirely -- `cargo test --workspace` needs their compiled `.so`s (`labs/vault-native/tests/
+## basic.rs` and `labs/vault-pinocchio/tests/basic.rs` both `include_bytes!` them directly), but
+## nothing in `make build` produced them. This was invisible in CI because its `target/` cache
+## persists across runs once built once (`.github/workflows/ci.yml`'s `actions/cache` step) and
+## invisible locally to any session that inherited an already-built `target/` -- a genuinely clean
+## clone's `make build && make test` failed outright with "No such file or directory" until now.
+## `vault_anchor` needed no addition: it IS an Anchor program (`Anchor.toml`'s `[programs.localnet]`
+## lists it), so plain `anchor build` already produces it.
 build:
 	anchor build
 	cargo build-sbf --manifest-path labs/example-liquidator/Cargo.toml
 	cargo build-sbf --manifest-path labs/hostile-callback/Cargo.toml
+	cargo build-sbf --manifest-path labs/vault-native/Cargo.toml
+	cargo build-sbf --manifest-path labs/vault-pinocchio/Cargo.toml
 
 ## cargo test --workspace: offline, no secrets, no network. The one load-bearing
 ## command (docs/zero-cost-demo.md §4).

@@ -1,0 +1,43 @@
+Aegis Protocol -- Phase 13 extended fuzz campaign (re-run against the final release codebase)
+Command: make fuzz  (cargo test --test fuzz --offline -- --ignored fuzz_extended_campaign --nocapture)
+Captured: 2026-09-14, this Phase 13 session.
+Budget: 25 seeds x 4,000 operations/seed = 100,000 operations, 2 markets (classic SPL/SPL and
+Token-2022 transfer-fee collateral), 6 actors, biased boundary-adjacent sampling, real nonzero
+interest accrual, deterministic and reproducible from each seed.
+-------------------------------------------------------------------------------------------------
+
+running 1 test
+[fuzz-extended] seed=0 succeeded=2573 failed=1427
+[fuzz-extended] seed=1 succeeded=2602 failed=1398
+[fuzz-extended] seed=2 succeeded=2530 failed=1470
+[fuzz-extended] seed=3 succeeded=2564 failed=1436
+[fuzz-extended] seed=4 succeeded=2550 failed=1450
+[fuzz-extended] seed=5 succeeded=2607 failed=1393
+[fuzz-extended] seed=6 succeeded=2592 failed=1408
+[fuzz-extended] seed=7 succeeded=2545 failed=1455
+[fuzz-extended] seed=8 succeeded=2588 failed=1412
+[fuzz-extended] seed=9 succeeded=2579 failed=1421
+[fuzz-extended] seed=10 succeeded=2565 failed=1435
+[fuzz-extended] seed=11 succeeded=2588 failed=1412
+[fuzz-extended] seed=12 succeeded=2594 failed=1406
+[fuzz-extended] seed=13 succeeded=2526 failed=1474
+[fuzz-extended] seed=14 succeeded=2538 failed=1462
+[fuzz-extended] seed=15 succeeded=2643 failed=1357
+[fuzz-extended] seed=16 succeeded=2590 failed=1410
+[fuzz-extended] seed=17 succeeded=2619 failed=1381
+[fuzz-extended] seed=18 succeeded=2621 failed=1379
+[fuzz-extended] seed=19 succeeded=2587 failed=1413
+[fuzz-extended] seed=20 succeeded=2552 failed=1448
+[fuzz-extended] seed=21 succeeded=2502 failed=1498
+[fuzz-extended] seed=22 succeeded=2570 failed=1430
+[fuzz-extended] seed=23 succeeded=2603 failed=1397
+[fuzz-extended] seed=24 succeeded=2601 failed=1399
+[fuzz-extended] TOTALS seeds=25 ops=100000 succeeded=64429 failed=35571
+test fuzz_extended_campaign ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 5 filtered out; finished in 323.36s
+
+Result: zero invariant violations across all 25 seeds / 100,000 operations, including seed 21 --
+the exact seed that found F-10-02 in Phase 10 -- which now completes its full run cleanly, exactly
+as Phase 10's own post-fix acceptance run recorded. This is fresh, independent confirmation on the
+final Phase 13 codebase, not a re-print of the Phase 10 result.

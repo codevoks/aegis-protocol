@@ -2,141 +2,262 @@
 
 **A risk-first, isolated-market, overcollateralized lending protocol on Solana.**
 
-> **STATUS: PHASE 9 — SDK, CLIENT & UI.**
-> Aegis is under construction. Phase 9 adds a typed TypeScript SDK (`sdk/ts/`, `@aegis/sdk`) built
-> on `@solana/kit` v8.x and `@anchor-lang/core` — never `@coral-xyz/anchor` or `@solana/web3.js` —
-> with IDL codegen deriving every discriminator, layout, and account order directly from
-> `target/idl/aegis.json`; PDA/account/read helpers; a `bigint` client-side math port validated
-> bit-for-bit against vectors the real Rust `aegis-math` emits (`I-SDK-01`); a transaction builder
-> for every user-facing instruction, each proven to fit the classic 1232-byte legacy limit with no
-> address lookup table, `liquidate`'s callback variant included (`I-TX-01`); and a Next.js app
-> (`app/`) covering the full local user journey — market view, position health, deposit/borrow/
-> repay/withdraw, and a scripted demo that warps time to show interest accruing and scripts a price
-> drop into a liquidation — against a real local Surfpool validator, entirely offline. No on-chain
-> code changed this phase. See [`docs/project-status.md`](docs/project-status.md) for the
-> authoritative state of every component.
+**Status: v0.1.0 — Phase 13 (final planned phase) complete.** All 13 phases of the roadmap are
+implemented and tested. Aegis is a complete engineering artifact — it is **not** an audited,
+production-ready system. Read the warning immediately below before reading anything else.
+
+---
+
+## ⚠️ Not audited. Do not deploy with real capital.
+
+**Aegis has NOT received an independent external security audit and MUST NOT be deployed to
+mainnet with real user funds.** This repository's own adversarial self-review (32 threats, 87
+invariants, mutation-validated fuzzing) is real engineering evidence, but a self-review is not a
+substitute for independent review — no self-review can be. The risk parameters are illustrative,
+not researched; the oracle is single-source; there are no supply caps; the upgrade authority is a
+single key with unmitigated total power. See [`docs/economic-model.md` §11](docs/economic-model.md)
+for every stated v1 simplification and [`docs/threat-model.md` §4](docs/threat-model.md) for the
+residual risks accepted at this stage. **A professional, independent audit is a prerequisite for
+any deployment holding real value, not an optional next step.**
 
 ---
 
 ## What Aegis is
 
-Each Aegis market is an independent lending venue defined by exactly one collateral asset, one loan
-asset, one oracle configuration, and one frozen risk parameter set. Lenders supply the loan asset and
-earn utilization-driven interest. Borrowers escrow collateral — which is **never lent out** — and
-borrow against it. Positions breaching their liquidation threshold are liquidated permissionlessly for
-a bonus. Losses are contained inside the market that produced them, absorbed first by protocol fees
-and only then socialized across that market's lenders.
+Aegis is a Solana lending protocol built around **isolated two-asset markets**: each market has
+exactly one collateral asset, one loan asset, one oracle configuration, and one risk-parameter set,
+so a bad outcome in one market cannot reach another. Collateral is **escrowed, never lent** — it
+sits in a vault the protocol never touches except to return it or hand it to a liquidator, which
+makes custody an exact, provable accounting identity rather than a pooled-liquidity promise. The
+engineering priority throughout is **risk-first**: every check, every rounding direction, and every
+governance power exists because a specific failure mode was named and designed against, not because
+it is conventional.
 
-The organizing principle is that **risk must be bounded, named, and localized** — in the account
-model, in the economics, and in the failure modes.
+## The architectural thesis
 
-## The three decisions that shape it
-
-1. **Isolated two-asset markets, not a cross-collateral money market** ([ADR-0004](docs/adr/0004-isolated-markets.md)).
-   Distinct markets share no writable account, so they parallelize by construction, solvency is a
-   bounded two-asset computation, and bad debt provably cannot cross markets.
-2. **Collateral is escrowed and never lent** ([ADR-0005](docs/adr/0005-collateral-escrow-and-vault-design.md)).
-   This makes custody an exact, assertable identity and removes withdrawal-liquidity crunches
-   entirely — at a deliberate cost in capital efficiency.
-3. **Oracle failure is fail-closed for risk-increasing operations and fail-open for risk-reducing
-   ones** ([ADR-0008](docs/adr/0008-oracle-abstraction-no-mock-program.md)).
-   Borrowing and liquidation stop when prices are untrustworthy; repaying, topping up collateral, and
-   recognizing bad debt never do.
-
-## Planned properties
-
-- Everything runs **offline and free** — no RPC, no API key, no faucet, no paid service.
-- Deterministic prices via **byte-exact Pyth account injection**, so tests exercise the real
-  deserialization path and the production program contains **no mock oracle code**.
-- **87 invariants**, nine of them asserted after every instruction by a stateful fuzzer, with mutation
-  testing proving the fuzzer can actually falsify them.
-- **32 threats** enumerated, each with a named test that must fail when its mitigation is removed.
-- Every performance claim backed by committed before/after compute measurements.
-
-## Documentation
-
-Read in this order:
-
-| Document | Contents |
-|---|---|
-| [`docs/product.md`](docs/product.md) | Thesis, the product critique that reshaped it, non-goals, requirements |
-| [`docs/architecture.md`](docs/architecture.md) | System and module structure |
-| [`docs/economic-model.md`](docs/economic-model.md) | **All formulas, units, rounding, worked examples** |
-| [`docs/account-model.md`](docs/account-model.md) | Accounts, PDAs, custody, parallelism analysis |
-| [`docs/instruction-catalogue.md`](docs/instruction-catalogue.md) | Every instruction, accounts, preconditions, attacks |
-| [`docs/oracle-design.md`](docs/oracle-design.md) | Price validation and failure policy |
-| [`docs/token-compatibility.md`](docs/token-compatibility.md) | SPL Token / Token-2022 policy |
-| [`docs/invariants.md`](docs/invariants.md) | The 87 invariants |
-| [`docs/threat-model.md`](docs/threat-model.md) | Trust boundaries, 32 threats, accepted residual risks |
-| [`docs/testing-strategy.md`](docs/testing-strategy.md) | The five-tier test pyramid |
-| [`docs/performance-strategy.md`](docs/performance-strategy.md) | Compute and contention strategy |
-| [`docs/zero-cost-demo.md`](docs/zero-cost-demo.md) | How everything runs free and offline |
-| [`docs/governance.md`](docs/governance.md) | Roles, bounded admin power, upgrade progression |
-| [`docs/composability.md`](docs/composability.md) | External integration strategy |
-| [`docs/coverage-matrix.md`](docs/coverage-matrix.md) | Topic coverage and honest gap analysis |
-| [`docs/ecosystem-research.md`](docs/ecosystem-research.md) | Dated toolchain research and open verification gates |
-| [`docs/phase-roadmap.md`](docs/phase-roadmap.md) | The 13 implementation phases |
-| [`docs/project-status.md`](docs/project-status.md) | **Current state of everything** |
-| [`docs/adr/`](docs/adr/) | 13 architecture decision records |
-
-Contributor rules: [`AGENTS.md`](AGENTS.md) (engineering constitution) and [`CLAUDE.md`](CLAUDE.md)
-(Claude session workflow).
-
-## Planned stack
-
-Anchor 1.x · Rust · SPL Token & Token-2022 · Pyth pull oracle ·
-LiteSVM / Mollusk / Surfpool · `@solana/kit` v8 · Next.js.
-Native Solana Rust and Pinocchio appear in scoped, benchmarked labs — not in production
-([ADR-0003](docs/adr/0003-native-pinocchio-as-labs.md)).
+- **Isolated markets, not a cross-collateral money market**
+  ([ADR-0004](docs/adr/0004-isolated-markets.md)). No writable account is shared between two
+  markets, so markets parallelize by construction and bad debt is contained to the market that
+  produced it — a claim this repository measures (PERF-C1..C3), not just asserts.
+- **Collateral is escrowed and never lent**
+  ([ADR-0005](docs/adr/0005-collateral-escrow-and-vault-design.md)). `deposit_collateral`/
+  `withdraw_collateral` don't even declare the market account writable.
+- **Internal shares, not a pooled balance.** Supply and borrow positions are virtual-offset shares
+  ([ADR-0006](docs/adr/0006-peer-to-pool-internal-shares.md)) with 14 individually tested rounding
+  directions, all biased in the protocol's favor.
+- **Every token movement is a measured delta, never a requested amount.** A post-CPI `reload()`
+  and `after − before` accounting is mandatory on every inbound transfer, which is what makes
+  Token-2022 transfer-fee collateral safe to hold.
+- **Oracle abstraction with one real implementer.** A `PriceSource` trait exists for a future
+  second oracle, but v1's only implementation is a real Pyth pull-oracle adapter — there is no mock
+  oracle anywhere in the deployed program
+  ([ADR-0008](docs/adr/0008-oracle-abstraction-no-mock-program.md)).
+- **Conservative arithmetic.** Every economic computation goes through exactly two functions
+  (`mul_div_floor`/`mul_div_ceil`) with 256-bit intermediates — a concrete, tested overflow case
+  in the specification requires this, not a preference for rigor's own sake.
+- **Bounded, asymmetric governance.** The admin can change risk parameters within on-chain bounds,
+  two-step-transfer its own authority, and withdraw only the protocol's own accrued fee — never a
+  user's funds ([INV-ADM-01](docs/invariants.md)). The guardian can pause but never unpause. Risk
+  loosening is timelocked; tightening is immediate.
 
 ## Quickstart
 
-**Right now (Phase 9):** on top of everything Phase 2-8 shipped (no on-chain code changed this
-phase), `sdk/ts/` (`@aegis/sdk`) and `app/` (a Next.js application) exist. The SDK's typed
-instruction builders, PDA derivation, and account decoders are generated from the real
-Anchor-build IDL; its client-side math is validated bit-for-bit against vectors the real Rust
-`aegis-math` emits; every instruction's realistic transaction — including `liquidate` with a
-callback — fits the classic 1232-byte limit with no address lookup table. The app runs the full
-local user journey (market view, deposit, borrow, health-factor tracking, repay, withdraw) plus a
-scripted demo (warp time to show interest accruing, crash a price, liquidate) against a local
-Surfpool validator, entirely offline.
-
 ```bash
-make setup        # verify the pinned toolchain (Solana CLI, Anchor, Surfpool, Node) is installed
-make build        # anchor build (aegis) + cargo build-sbf (the two Phase 8 labs/ programs)
-make test         # cargo test --workspace — offline, no network, no secrets (the load-bearing command)
-make demo         # Phase 8's Rust liquidation-callback demo (docs/phases/phase-08-composability.md)
-make sdk-install  # npm install in sdk/ts/
-make app-install  # npm install in app/ (resolves @aegis/sdk via a local file: path)
-make sdk-test     # SDK unit tests: cross-language math (I-SDK-01), PDA parity (I-SDK-03),
-                  # transaction size (I-TX-01) -- no running validator required
-make sdk-test-e2e # I-SDK-02: build/sign/send/confirm/decode for every instruction, against a
-                  # real local Surfpool validator this test starts and tears down itself
-make app          # starts a local Surfpool, deploys aegis.so, runs the Next.js dev server at
-                  # http://localhost:3000 -- Ctrl+C stops both. Visit /demo to seed a market and
-                  # run the scripted interest-accrual + liquidation demo.
+git clone https://github.com/codevoks/aegis-protocol.git
+cd aegis-protocol
+make setup   # prints the exact pinned toolchain versions this repo expects
+make build   # anchor build + the two Phase 8 labs/ programs
+make test    # cargo test --workspace -- offline, no network, no secrets. ~309 tests.
+make demo    # the complete zero-cost-demo.md §5 scenario, offline, with a live invariant/CU report
 ```
 
-`make fuzz` and `make bench` exist as stubs that name the phase that implements them (10 and 11
-respectively) — they are not yet functional.
+**Prerequisites**, stated precisely (`docs/phases/phase-01-foundation.md` §3,
+`docs/ecosystem-research.md`): Rust 1.98.1 (via `rustup`), Solana CLI (Agave) 3.1.10, Anchor CLI
+1.2.0 (via `avm`), Surfpool (replaces `solana-test-validator`), Node 22.x. `make setup` prints the
+exact versions found on your machine so you can diff against these before running anything else.
+Everything `.gitignore` excludes (`target/`, `node_modules/`, `.anchor/`) is mechanically
+regenerated by the commands above — nothing is hand-crafted or required to review the source.
 
-The exact install commands, pinned versions, and verification steps are recorded in
-[`docs/phases/phase-01-foundation.md`](docs/phases/phase-01-foundation.md) §3 and
-[`docs/ecosystem-research.md`](docs/ecosystem-research.md). Everything `.gitignore` excludes
-(`target/`, `node_modules/`, `.anchor/`, local validator ledgers, build caches) is mechanically
-regenerated by these commands — never hand-crafted, and never required to understand or review the
-project.
+For the SDK and web app:
 
-## Security status
+```bash
+make sdk-install && make app-install   # npm install in sdk/ts/ and app/
+make sdk-test                          # cross-language math vectors, PDA parity, tx-size — no validator needed
+make app                               # local Surfpool + the program deployed + the Next.js dev server
+```
 
-**Aegis is not audited and must not be deployed to mainnet with real user capital.**
+## Real results
 
-The engineering rigor is real; the risk calibration is not. Specifically: risk parameters are
-illustrative rather than researched, the oracle is single-source, there are no supply caps, and the
-upgrade authority is an unmitigated total risk. See
-[`docs/economic-model.md` §11](docs/economic-model.md) for the v1 simplifications and
-[`docs/threat-model.md` §4](docs/threat-model.md) for the accepted residual risks — both are stated
-plainly rather than buried.
+Every number below is sourced from a command you can run yourself; none is rounded up.
+
+| Claim | Evidence | Command |
+|---|---|---|
+| 309 deterministic Rust tests, 0 failed, 4 network/manual-tagged and skipped by design | `cargo test --workspace` | `make test` |
+| 72 deterministic TypeScript tests (cross-language math vectors, PDA parity, transaction size) | `sdk/ts/test/*.test.ts` | `make sdk-test` |
+| 87 invariants defined, 9 mutation-validated `[GLOBAL]` | [`docs/invariants.md`](docs/invariants.md) | `./scripts/check-traceability.sh` |
+| 32 threats cataloged, each with a specific-error-asserting test | [`docs/threat-model.md`](docs/threat-model.md), [`docs/security/threat-traceability.md`](docs/security/threat-traceability.md) | — |
+| 100,000-operation extended fuzz campaign (25 seeds × 4,000 ops, 2 markets, 6 actors), 0 unexplained violations | [`docs/security/mutation-report.md`](docs/security/mutation-report.md) | `make fuzz` |
+| Worst-case instruction (`liquidate`, Token-2022 both sides, clamped) at 109,687 CU — 45.2% margin under the 200,000 CU budget | [`benchmarks/cu.json`](benchmarks/cu.json), [`benchmarks/README.md`](benchmarks/README.md) | `make bench` |
+| Every instruction's realistic transaction fits 1232 bytes with no address lookup table (worst case: `liquidate` with a callback, 834 bytes) | `sdk/ts/test/tx-size.test.ts` | `make sdk-test` |
+| 2 real bugs found and fixed during development (F-10-02); 2 more investigated and confirmed harmless, not fixed (F-10-01, F-13-01) | [`docs/security/findings.md`](docs/security/findings.md) | — |
+| 10/10 static repository guards pass (no float, no `init_if_needed`, no duplicate-mutable accounts, no raw slot-time, no unbounded loops, overflow checks on, CPI allowlist, custody-path allowlist, no manual account close, test-ID traceability) | `scripts/check-*.sh` | `make traceability` (+ the others directly) |
+
+## Architecture overview
+
+```
+programs/aegis/src/     Anchor 1.x program -- instructions/, state/, oracle/, token/, guards.rs
+crates/aegis-math/      no_std, float-free economics: fixed-point, shares, IRM, health, liquidation
+crates/aegis-test-kit/  LiteSVM test fixtures -- mints, Pyth injection, invariant checkers, demos
+labs/                   Scoped, non-production: liquidation callback examples; Anchor/native/
+                        Pinocchio custody-primitive CU comparison
+sdk/ts/                 @aegis/sdk -- typed clients, PDA derivation, tx builders, on @solana/kit
+app/                    Next.js reference UI against a local Surfpool validator
+bots/liquidator/        A TypeScript liquidator keeper (implemented; no automated test suite yet --
+                        see docs/project-status.md's honest state of this component)
+```
+
+Full detail: [`docs/architecture.md`](docs/architecture.md).
+
+## Implemented capabilities
+
+Isolated multi-market lending and borrowing · utilization-driven interest with third-order Taylor
+compounding · permissionless liquidation with a close-factor/full-liquidation split and a collateral
+clamp · bad-debt recognition with protocol-first-loss socialization · SPL Token and a vetted,
+positive-allowlisted subset of Token-2022 (transfer-fee collateral, interest-bearing, scaled-UI, and
+metadata extensions; hostile extensions like `PermanentDelegate`/`TransferHook`/`Pausable` rejected
+at market creation) · an optional, security-hardened liquidation callback for external swap
+composability · two-step admin transfer, guardian-only pause-setting with a set-but-never-clear
+asymmetry, and a tighten-immediate/loosen-timelocked parameter-change model · a real Anchor
+`Migration<From, To>` account-schema migration · a typed TypeScript SDK and a functional reference
+web app.
+
+## Security model
+
+- **Custody is a provable identity, not a promise.** `loan_vault.amount ==
+  total_supply_assets − total_borrow_assets` and the collateral equivalent hold exactly after every
+  instruction — asserted by a stateful fuzzer after every generated action, success or failure.
+- **A positive allowlist for Token-2022.** An unrecognized extension is rejected by default, never
+  silently accepted — verified against the actual resolved `spl-token-2022-interface` crate, not a
+  remembered list.
+- **Canonical PDAs, checked twice.** Every account relationship is validated by both PDA
+  derivation and a stored-pubkey `has_one`, so one missing constraint is not fatal.
+- **Fail-closed oracle policy with a stated trade-off.** Borrowing and liquidation stop on a stale,
+  wide-confidence, or malformed price; repaying, depositing collateral, and recognizing bad debt
+  never do — the protocol's central safety property, exercised live in `make demo`.
+- **Conservative, one-primitive arithmetic.** Every multiply-divide goes through
+  `mul_div_floor`/`mul_div_ceil` with 256-bit intermediates; `overflow-checks = true` is enforced in
+  the release profile and CI-checked to stay that way.
+- **A liquidation callback trusted for nothing.** No signer is ever forwarded to it; every
+  post-condition is re-verified by re-reading state after the callback returns, never by trusting
+  its return value.
+- **Bounded, asymmetric governance.** The admin cannot move user funds under any instruction in
+  this program (`INV-ADM-01`, with a dedicated adversarial test that attempts it and must fail);
+  risk-increasing parameter changes are timelocked and publicly observable before they apply.
+
+These are design mechanisms, not guarantees of safety — see the residual risks below.
+
+## Testing and reproducibility
+
+A five-tier pyramid (`docs/testing-strategy.md`): `aegis-math` unit/property tests with no SVM →
+Mollusk single-instruction CU measurement → LiteSVM integration and adversarial tests → a
+hand-built stateful invariant fuzzer → Surfpool for the real JSON-RPC surface, SDK codegen, and
+transaction size. Every invariant in `docs/invariants.md` carries a test ID, and a CI-blocking
+script (`scripts/check-traceability.sh`) parses that document and fails the build if a cited test
+does not exist — the catalogue is a build-enforced contract, not documentation that can silently
+drift from the code.
+
+`make test` runs the release-critical, offline suite (Tiers 1-5, short-budget fuzz included). It
+does **not** run the extended fuzz campaign or a full mutation-validation sweep — those are
+explicitly heavier, separately invoked commands, run pre-tag rather than on every push:
+
+```bash
+make test              # the release-critical suite -- what CI runs on every push
+make fuzz               # the extended 100,000-operation campaign (~12 minutes)
+./scripts/check-traceability.sh   # invariant -> test-ID build-enforced contract
+```
+
+Mutation validation (does each check's test actually fail when the check is removed?) was
+performed for all nine `[GLOBAL]` invariants during Phase 10
+([`docs/security/mutation-report.md`](docs/security/mutation-report.md)); Phase 13 re-ran three of
+the nine fresh, end to end, against the final codebase, chosen to cover the files most changed
+since Phase 10 — all three were caught. See
+[`docs/project-status.md`](docs/project-status.md)'s Phase 13 section for the exact commands and
+results, and for an honest statement of which of the nine were not re-run this release and why.
+
+## Performance evidence
+
+| Instruction | Variant | CU | Margin to 200,000 |
+|---|---|---:|---:|
+| `init_position` | fresh market | 11,481 | 94.3% |
+| `deposit_collateral` | Token-2022, 2% fee | 15,692 | 92.2% |
+| `supply` / `withdraw` | Token-2022, real accrual | 25,387 / 25,037 | 87.3% / 87.5% |
+| `borrow` | Token-2022, both feeds | 48,360 | 75.8% |
+| `repay` | Token-2022, dt=30d | 26,003 | 87.0% |
+| `create_market` | Token-2022 both sides | 45,104 | 77.4% |
+| **`liquidate`** | **Token-2022 both sides, clamped (worst case)** | **109,687** | **45.2%** |
+| `absorb_bad_debt` | post-liquidation bad debt | 12,223 | 93.9% |
+
+Full table, methodology, and the BEFORE/AFTER optimization record (a real 256-bit-division fast
+path that cut `liquidate`'s worst case by 76.6% and `accrue_interest` by 92.0% — the honest story
+of a first measurement landing at 469,137 CU, 2.3× over budget, before the fix):
+[`benchmarks/README.md`](benchmarks/README.md), [`benchmarks/cu.json`](benchmarks/cu.json).
+
+**Contention claims, stated precisely** (`docs/performance-strategy.md` §2): different markets'
+transactions share zero writable accounts and were confirmed to execute concurrently on a real
+local Surfpool validator (PERF-C1); `deposit_collateral`/`withdraw_collateral` provably never write
+the market account, so they parallelize within a market (PERF-C2); `Market` remains the one
+intra-market contention point for pooled operations (PERF-C3) — this is **not** a "fully parallel"
+protocol, and this README does not claim it is one.
+
+## Documentation
+
+| Document | Contents |
+|---|---|
+| [`docs/product.md`](docs/product.md) | Thesis, non-goals, requirements |
+| [`docs/architecture.md`](docs/architecture.md) | System and module structure |
+| [`docs/economic-model.md`](docs/economic-model.md) | Every formula, unit, rounding direction |
+| [`docs/account-model.md`](docs/account-model.md) | Accounts, PDAs, custody, the seven token-movement paths |
+| [`docs/instruction-catalogue.md`](docs/instruction-catalogue.md) | Every instruction: accounts, preconditions, attacks |
+| [`docs/oracle-design.md`](docs/oracle-design.md) | Price validation and fail-closed policy |
+| [`docs/token-compatibility.md`](docs/token-compatibility.md) | The Token-2022 positive allowlist |
+| [`docs/invariants.md`](docs/invariants.md) | The 87 invariants |
+| [`docs/threat-model.md`](docs/threat-model.md) | 32 threats, trust boundaries, accepted residual risks |
+| [`docs/governance.md`](docs/governance.md) | Roles, bounded admin power, upgrade progression |
+| [`docs/runbooks/`](docs/runbooks/) | R-1..R-5 operational runbooks |
+| [`docs/security/`](docs/security/) | Findings, threat traceability, mutation validation, the manual review log |
+| [`docs/project-status.md`](docs/project-status.md) | The authoritative, per-phase state of everything |
+| [`docs/adr/`](docs/adr/) | 14 architecture decision records |
+
+## Limitations
+
+Stated in `docs/economic-model.md` §11 and `docs/threat-model.md` §4, summarized here:
+
+- **Single-source oracle.** No multi-oracle median or fallback; a real-market price manipulation
+  (T-20) is outside the protocol's control and is not mitigated in-program.
+- **Illustrative risk parameters.** LTVs, liquidation bonuses, and IRM curves are engineering
+  defaults, not the output of quantitative risk research.
+- **No supply or borrow caps.** Not needed at zero TVL; a real deployment would need them.
+- **A single upgrade-authority key controls the entire deployed program** (Stage 0/1 of the
+  progression in `docs/governance.md` §5) — this is the single largest residual risk in the system
+  and no in-program mechanism mitigates it.
+- **F-13-01**: a bad-debt event can leave a permanent, inert "ghost" of unbacked supply shares in
+  the fee position — proven to carry zero economic consequence at any future deposit size, and left
+  unfixed for that reason, but a real, literal violation of one invariant's stated text
+  ([`docs/security/findings.md`](docs/security/findings.md)).
+- **The liquidator bot is implemented but has no automated test suite** — see
+  [`docs/project-status.md`](docs/project-status.md) for the honest, itemized state of every
+  component (implemented ≠ tested ≠ demoed ≠ documented, tracked separately throughout this repo).
+
+## Audit and deployment status
+
+**No independent external security audit has been performed.** No mainnet deployment exists. A
+real devnet deployment exists (program ID and verifiable-build hash recorded in
+`docs/project-status.md`'s Phase 12 section) purely to demonstrate the verifiable-build workflow —
+it holds no real value and is not a claim of production readiness. Before any deployment handling
+real user funds: commission an independent audit, replace the illustrative risk parameters with
+researched ones, move the upgrade authority to at least a multisig (`docs/governance.md`'s Stage
+2), and add supply/borrow caps. None of this is optional, and this repository does not claim
+otherwise anywhere.
 
 ## License
 

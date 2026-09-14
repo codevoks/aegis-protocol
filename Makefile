@@ -118,14 +118,23 @@ labs-bench:
 ## `cargo run -p aegis-test-kit --example phase6_demo`
 ## `cargo run -p aegis-test-kit --example phase7_demo`
 ##
-## Phase 8 demo: an under-funded liquidator (zero loan-asset balance) liquidates via the
-## example-liquidator callback -- seize, deterministic local swap, repay, all in one transaction --
-## then, side by side, an ordinary pre-funded liquidator liquidates a second position with no
-## callback at all, proving I-LIQ-CB-02. See docs/phases/phase-08-composability.md "Demo". The
-## companion TypeScript keeper demo lives in bots/liquidator/ (see its own README) and is run
-## separately, against a local, non-forking Surfpool validator.
+## `cargo run -p aegis-test-kit --example phase8_demo` (the under-funded-liquidator callback demo,
+## I-LIQ-CB-02, docs/phases/phase-08-composability.md "Demo"). The companion TypeScript keeper
+## demo lives in bots/liquidator/ (see its own README) and is run separately, against a local,
+## non-forking Surfpool validator.
+##
+## Phase 13 (release) demo: the complete, mandatory docs/zero-cost-demo.md §5 scenario against a
+## single market/position -- mints (incl. a real Token-2022 transfer-fee collateral mint) through
+## protocol/market creation, supply, collateral deposit, borrow, a 30-day accrual with printed
+## utilization/APR, a beyond-LTV borrow rejected, a stale-oracle borrow rejected, the SAME stale
+## oracle still permitting repay/deposit (the protocol's central fail-closed/fail-open safety
+## property, both halves, in one continuous run), a partial liquidation, a clamped liquidation into
+## real bad debt, absorb_bad_debt, a lender's full withdrawal realizing the socialized loss, and a
+## final invariant report plus a per-instruction compute-unit ledger built from THIS run's own
+## measurements. Zero-cost, offline, in-process LiteSVM -- no devnet, no RPC, no API key, no
+## Hermes, no wallet extension, no secrets.
 demo: build
-	cargo run -p aegis-test-kit --example phase8_demo
+	cargo run -p aegis-test-kit --example phase13_demo
 
 ## --- Phase 9: SDK, client & UI ---
 

@@ -55,12 +55,15 @@ side-effect-free.
 
 ## 4. Scenario definitions
 
-Every one of the 13 current production instructions (`programs/aegis/src/lib.rs`'s `#[program]`
-module — `ping` is a Phase 1 toolchain proof, not production, and is excluded; the Phase 12
-governance/pause instructions listed in `docs/instruction-catalogue.md` do not exist in this
-program yet and are correctly out of scope) is benchmarked, for every token-program variant that
-genuinely applies to it, and for the representative states in `docs/phases/phase-11-performance.md`
-#8 that materially change its cost:
+Every one of the 21 current production instructions (`programs/aegis/src/lib.rs`'s `#[program]`
+module — `ping` is a Phase 1 toolchain proof, not production, and is excluded) is benchmarked, for
+every token-program variant that genuinely applies to it, and for the representative states in
+`docs/phases/phase-11-performance.md` #8 that materially change its cost. This originally covered
+the 13 instructions that existed through Phase 11; Phase 12 added its own eight governance/upgrade
+instructions with their own CU section below (§5), correctly recorded there at the time — this
+paragraph's prose describing "13... governance/pause instructions... out of scope" was itself
+stale until Phase 13 corrected it (the underlying `benchmarks/cu.json` data was never missing
+them, only this sentence lagged):
 
 | Instruction | Variants measured | Why |
 |---|---|---|

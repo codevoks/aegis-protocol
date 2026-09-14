@@ -1,0 +1,101 @@
+Aegis Protocol -- Phase 13 release demo transcript
+Command: make demo   (anchor build, then: cargo run -p aegis-test-kit --example phase13_demo)
+Reproduces: docs/zero-cost-demo.md §5, all 16 steps, offline and deterministic (fixed seeds
+throughout -- crates/aegis-test-kit never uses Keypair::new()). Re-running `make demo` on an
+unmodified tree reproduces every address, amount, and CU figure below exactly.
+Captured: 2026-09-14, this Phase 13 session, on a clean local build (no devnet, no RPC, no secrets).
+-------------------------------------------------------------------------------------------------
+
+Aegis Protocol — Phase 13 release demo (docs/zero-cost-demo.md §5, full scenario)
+Zero-cost, local, offline: in-process LiteSVM, no devnet, no RPC, no API key, no Hermes, no wallet.
+
+Deployed program DbRhjkZV1QSxMj5AvrYdgVsyEz8nKhoCLnSLGSKsqaF9 into LiteSVM.
+
+=== 1. Mints (Token-2022 2% transfer-fee SOL-like collateral, SPL USDC-like loan), protocol, market ===
+  market:            AvHA4ophQzxTKxmEdjk6gshjzprXebCVj1YydKM2wMNN
+  collateral mint:   5Z6Ay5NEcbg3xhopc522sBCRXQujkTiuDRnHGfQdcnSf (Token-2022, 2% transfer fee, 9dp)
+  loan mint:         7v54NWdBtkjuAFJrLGsS2SXnuk8nKam81mZJeeYxVFi9 (SPL Token, 6dp)
+
+=== 2. Inject Pyth prices: SOL = $150.00 +/- $0.30, USDC = $1.0000 +/- $0.0002 ===
+  SOL price account:  EWn7dE93GeQJu72WEkEmC5MZpm5FhiJzkcJEf1xpRdWP
+  USDC price account: EahQmXc3rwhY3CH1g3ZgUx8L4vHTNmzpK1xtiQ1RAxq6
+
+=== 3. Lender supplies 10,000 USDC ===
+  supplied 10000.000000 USDC
+  checked: INV-CUS-01 (loan_vault.amount == total_supply_assets - total_borrow_assets)
+  checked: INV-ACC-01 (total_supply_shares == Σ position.supply_shares, incl. fee_position)
+
+=== 4. Borrower deposits ~10 SOL collateral (Token-2022, 2% transfer fee) ===
+  requested 10.204082000 SOL -> credited 10.000000360 SOL (fee withheld: 0.204081640 SOL, measured delta, never assumed)
+  checked: INV-CUS-02 (collateral_vault.amount == Σ position.collateral_amount + collateral_fee_accrued)
+
+=== 5. Borrower borrows 900 USDC ===
+  borrowed 900.000000 USDC; health factor ~= 1.3304 (healthy)
+  checked: INV-SOLV-01 (debt_value <= collateral_value * max_ltv / WAD)
+
+=== 6. Warp 30 days; accrue interest; show utilization and realized APR ===
+  utilization at time of accrual: 9.00%
+  interest accrued over 30 days:  0.332938 USDC
+  realized APR over this window:  0.45%
+  checked: INV-ACC-04 (accrual leaves total_supply_assets - total_borrow_assets unchanged)
+
+=== 7. Attempt to borrow far beyond max_ltv -- EXPECT FAILURE ===
+  rejected with AegisError::ExceedsMaxLtv, as required. Position state unchanged.
+
+=== 8. Let the same price accounts go stale; attempt to borrow -- EXPECT FAILURE (fail closed) ===
+  rejected with AegisError::OraclePriceStale, as required. Position state unchanged.
+  this is the protocol's central safety property: it fails closed on a risk-INCREASING operation.
+
+=== 9. With the SAME stale price, repay and deposit collateral -- EXPECT SUCCESS (risk-reducing) ===
+  repay of 50 USDC succeeded with the oracle still stale (repay never reads a price).
+  a small collateral top-up succeeded with the oracle still stale (deposit never reads a price).
+  this is the other half of the central safety property: risk-REDUCING operations stay open.
+
+=== 10-11. Restore a fresh price at a crashed level: SOL = $95.00 +/- $0.20 -- position becomes liquidatable ===
+  outstanding debt: 850.332945 USDC; health factor now 0.8917 (< 1.0 -- liquidatable; < full_liq_hf 0.95 -- full liquidation allowed)
+
+=== 12. Liquidator partially liquidates -- repays half the outstanding debt ===
+  repay_assets:            425.166472 USDC
+  to_liquidator (net seize): 4.593882558 SOL
+  protocol_cut (cumulative): 0.022428876 SOL
+  remaining collateral:      5.290036219 SOL
+  remaining debt:            425.166473 USDC
+  checked: INV-LIQ-01 (was liquidatable, HF < WAD strictly), INV-CUS-01, INV-CUS-02
+
+=== 13. SOL crashes to $40.00 -- liquidate to zero collateral, bad debt created ===
+  collateral after liquidation: 0.000000000 SOL (fully seized -- the clamp fired)
+  remaining debt:               223.641283 USDC (bad debt -- collateral exhausted)
+  checked: INV-LIQ-02 (seizure <= collateral held), INV-CUS-01
+
+=== 14. absorb_bad_debt -- protocol fee shares absorb the loss first ===
+  bad_assets (total loss recognized): 223.641283 USDC
+  protocol fee shares burned (first-loss): 33292002421 -> 22
+  checked: INV-SOLV-04 (INV-CUS-01 holds through absorb_bad_debt), INV-SOLV-06 (fee shares burned before and beyond any lender loss)
+
+=== 15. Lender withdraws all shares -- realizing the socialized residual loss ===
+  before withdrawal: total_supply_shares=10000000000000022, total_supply_assets=9776691662, lender_shares=10000000000000000, fee_position_shares=22
+  lender originally supplied: 10000.000000 USDC
+  lender's redeemable value now: 9776.691662 USDC (LESS than principal)
+  lender's wallet balance after full withdrawal: 9776.691662 USDC
+  realized shortfall vs. original principal: 223.308338 USDC
+
+=== 16. Final invariant report and per-instruction compute-unit ledger (this run's own measurements) ===
+  INV-CUS-01: holds
+  INV-CUS-02: holds
+  INV-ACC-03: holds (total_supply_assets >= total_borrow_assets)
+  INV-ACC-06: VIOLATED as expected -- total_supply_shares=22 > 0 while total_supply_assets=0. This is F-13-01 (docs/security/findings.md), a genuine Phase 13 finding, not a demo defect.
+
+instruction                      compute units
+----------------------------------------------
+supply                                  22430
+deposit_collateral                      15718
+borrow                                  49011
+accrue_interest                         14425
+repay                                   24780
+deposit_collateral (stale oracle)        15718
+liquidate (partial)                    107119
+liquidate (clamped, bad debt)           69408
+absorb_bad_debt                         12640
+withdraw                                22425
+
+Demo complete. All 16 steps of docs/zero-cost-demo.md §5 exercised above, offline, zero cost.

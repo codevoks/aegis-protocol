@@ -33,8 +33,18 @@ checked, where, and the concrete conclusion — not generic prose.
 Grepped `programs/aegis/src` for `.unwrap()`, `.expect(`, and bare array indexing (`[` on a
 non-constant index) outside `#[cfg(test)]` blocks.
 
-- `.unwrap()` / `.expect(`: zero matches in production code paths. Every fallible operation uses
-  `?`, `.map_err(AegisError::from)?`, or an explicit `require!`.
+- `.unwrap()` / `.expect(`: **corrected in Phase 13** — this claim was inaccurate even at the time
+  it was written. `programs/aegis/src/instructions/liquidate/liquidate.rs`'s callback branch
+  (introduced Phase 8, before this Phase 10 review) contains two `.unwrap()` calls
+  (`ctx.accounts.callback_program.as_ref().unwrap()` and
+  `ctx.accounts.callback_collateral_account.as_ref().unwrap()`). Both are reachable only inside
+  `if has_callback { ... }`, and `has_callback = callback_program.is_some()` is asserted equal to
+  `callback_collateral_account.is_some()` by a `require_eq!` immediately beforehand — so neither
+  `unwrap()` can panic; this is a provably-safe pattern, not a defect. Every OTHER fallible
+  operation in `programs/aegis/src` does use `?`, `.map_err(AegisError::from)?`, or an explicit
+  `require!`, which is what this line originally meant to say. Recorded here rather than silently
+  fixed, per `AGENTS.md` §14 ("never claim a test was run when it was not" extends to "never leave
+  an inaccurate claim standing once found").
 - Indexing: the only non-constant index patterns found are slice accesses on `_reserved: [u8; N]`
   arrays during zero-initialization (bounded by the fixed array size, not caller input) and
   Anchor-macro-generated account deserialization internals (outside this program's own code).
@@ -62,3 +72,38 @@ that pair, at one specific tiny-magnitude boundary, can drift apart. A checklist
 review that confirms *structural* pairing is not equivalent to an exhaustive numeric analysis of
 every rounding boundary, and this line records that gap honestly rather than implying the manual
 pass would have caught what the fuzzer found.
+
+---
+
+## Phase 13 — whole-protocol self-review (final, pre-release)
+
+Systematic pass across the final codebase, working through `docs/phases/phase-13-release.md`'s own
+self-review checklist directly against source, not from memory of the Phase 10 review above. Full
+detail for each item lives in this phase's report; summarized here as the review log's own record.
+
+| Question | Method | Conclusion |
+|---|---|---|
+| Six token-movement paths / is there an undocumented seventh? | Read `account-model.md` §6.3 (which already documents **seven**, not six — Phase 8 updated it); grepped every `transfer_checked_in`/`transfer_checked_out` call site; ran `scripts/check-collateral-transfer-paths.sh` and `scripts/check-cpi-allowlist.sh` | Exactly seven paths exist, matching the frozen document exactly. No eighth, undocumented path. Both guard scripts pass. |
+| Every `require!` in `liquidate`: any reachable state unhandled? | Read `liquidate.rs` end to end, both branches, against `instruction-catalogue.md` §17 and ADR-0013 | No gap found; ordering (guard → pause → oracle → liquidatability → accounting → CPI → re-verify) matches the documented, security-critical sequence exactly; both `.unwrap()`s in the callback branch are guarded by a preceding `require_eq!` and cannot panic (see the panic-search correction above) |
+| Is there a vault-balance-as-source-of-truth path? | Grepped every `.amount` read on `loan_vault`/`collateral_vault` across `programs/aegis/src` | None: the only crediting path is `transfer_checked_in`'s measured `after − before` delta (never the raw balance as an accounting source), consistent with the Phase 10 finding above |
+| Any remaining `#[cfg(feature)]` changing on-chain behavior? | `grep -rn 'cfg(feature' programs/aegis/src crates/aegis-math/src` | Zero matches |
+| Does any README/doc claim exceed what the tests demonstrate? | Full README rewrite this phase (see below) against actual `cargo test --workspace` output, `benchmarks/cu.json`, and `docs/security/*` | Prior README (pre-Phase-13) materially overclaimed — it was still headed "PHASE 9" and described `make fuzz`/`make bench` as non-functional stubs, years of evidence out of date. Rewritten from real, current output |
+| Clean-clone reproduction under 15 minutes? | See the Phase 13 final report's CLEAN-CLONE TIMING section | Recorded there with real measured timing |
+
+**New finding this phase:** F-13-01 (`docs/security/findings.md`) — a real, reachable, but
+*proven-harmless* INV-ACC-06 violation in the bad-debt/full-withdrawal interaction, found by the
+Phase 13 release demo, not the fuzzer. Confirmed not exploitable at any deposit magnitude
+(`tests/adversarial/orphaned_fee_shares.rs`), left unfixed with a stated rationale, permanently
+regression-tested.
+
+**Also corrected this phase:** this document's own Phase 10 panic-search claim ("zero `.unwrap()`/
+`.expect()` matches in production code paths") was inaccurate — see the correction inline above.
+
+**Conclusion.** This review, together with the Phase 10 campaign it builds on, found two real,
+previously-undocumented facts about the codebase's actual behavior (F-13-01, and the panic-search
+correction) and zero new protocol defects requiring a code change. It does not find the protocol
+secure, and it is not a substitute for an independent external audit — no self-review can be. What
+it supports is a narrower, evidenced claim: every check this review traced was present, ordered
+correctly, and backed by a passing, non-vacuous test at the time of this review, and every
+divergence between documentation and code that this review found has been reconciled or explicitly
+recorded, not hidden. Aegis remains unaudited and must not hold real user capital.

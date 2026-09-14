@@ -1,4 +1,4 @@
-# Security Findings (Phase 10)
+# Security Findings (Phase 10, updated Phase 13)
 
 **Status honesty, up front** (per `docs/security/README.md`'s standing rule #4 and `AGENTS.md`
 §59): Aegis is **not audited**, has **not been formally verified**, and this document does not
@@ -13,8 +13,57 @@ the result below honestly.
 
 | ID | Severity | Component | Status |
 |---|---|---|---|
-| F-10-02 | Low | `programs/aegis/src/instructions/borrow/repay.rs` | **Fixed this phase.** Real, reproducible INV-ACC-06 violation found by the extended fuzz campaign against the unmutated program. Regression test + fix committed. |
+| F-13-01 | Informational | `absorb_bad_debt` / `withdraw` (supply-side share dust) | **Confirmed harmless this phase.** Real, reproducible INV-ACC-06 violation, found by the Phase 13 release demo. Proven, not merely argued, to carry zero economic consequence at any future deposit size. No fix — see below. |
+| F-10-02 | Low | `programs/aegis/src/instructions/borrow/repay.rs` | **Fixed (Phase 10).** Real, reproducible INV-ACC-06 violation found by the extended fuzz campaign against the unmutated program. Regression test + fix committed. |
 | F-10-01 | Informational | `withdraw`/`borrow` free-liquidity checks | Confirmed redundant defense-in-depth, not a vulnerability — no fix needed |
+
+## F-13-01 — bad-debt event can leave `fee_position` holding provably-worthless "ghost" supply shares
+
+- **Severity:** Informational. Confirmed **not** exploitable and **not** merely bounded-and-small
+  like F-10-02 — the implied value of the residual shares is proven to be exactly zero for a
+  future deposit of *any* size, including `u64::MAX`, not just realistic ones.
+- **Affected component:** the interaction between `absorb_bad_debt`'s protocol-first-loss step
+  (`programs/aegis/src/instructions/liquidate/absorb_bad_debt.rs`) and `withdraw`'s
+  `to_assets_down` share redemption (`programs/aegis/src/instructions/lend/withdraw.rs`,
+  `crates/aegis-math/src/shares.rs`).
+- **Threat / invariant:** T-17 (exploitable rounding) family / **INV-ACC-06** `[GLOBAL]`
+  (`total_supply_shares == 0 ⟺ total_supply_assets == 0`).
+- **Discovered via:** the Phase 13 release demo (`crates/aegis-test-kit/examples/phase13_demo.rs`,
+  step 15/16) — not the fuzzer. A genuine bad-debt event (steps 10–13) burns most of
+  `fee_position`'s supply shares in step 14's `absorb_bad_debt`, leaving a small nonzero dust
+  remainder; the market's sole other lender then withdraws their entire share balance (step 15)
+  and the demo's own final invariant check (step 16) caught the violation directly, rather than
+  panicking uncaught.
+- **Root cause:** `withdraw`'s `assets`-from-`shares` path computes `to_assets_down(shares,
+  total_supply_assets, total_supply_shares)` (floored). When one lender holds effectively all of
+  `total_supply_shares` (the rest being `fee_position`'s post-absorption dust), that lender's
+  floor-rounded redemption can equal the market's *entire* remaining `total_supply_assets` exactly,
+  because the dust shares' true fractional entitlement is below one base unit. The result:
+  `total_supply_assets` reaches exactly `0` while `fee_position.supply_shares` (and therefore
+  `total_supply_shares`) stays nonzero — INV-ACC-06's literal text is violated.
+- **Why this is provably harmless, not merely small (verified, not assumed):** the dust shares'
+  implied value after any future deposit `D` is `to_assets_down(dust, D, D·(dust + VIRTUAL_SHARES)
+  + dust)`. For `dust < VIRTUAL_SHARES` (`1_000_000` — true by construction, since dust is
+  whatever survived being *burned down* from a real share balance, always far below the virtual
+  offset in every reachable case), this expression is bounded above by the asymptotic ratio
+  `dust / (dust + VIRTUAL_SHARES) < 1` for every finite `D`, so the floor is `0` **for every
+  possible future deposit, without exception** — not "usually," not "for realistic amounts."
+  `tests/adversarial/orphaned_fee_shares.rs` verifies this two ways: a closed-form check swept
+  across `D ∈ {1, u64::MAX}` for several dust magnitudes, and the same check re-run against the
+  *real* on-chain dust value produced by a real `create_market → supply → seed debt → accrue →
+  absorb_bad_debt → withdraw` sequence. No lender is ever diluted; no value is ever created or
+  destroyed; the shares are a permanent, inert bookkeeping artifact.
+- **Minimized reproduction:** `tests/adversarial/orphaned_fee_shares.rs::
+  f_13_01_bad_debt_dust_in_fee_position_never_regains_value_at_any_future_deposit_size`.
+- **Recommendation:** **no code change**, matching F-10-01's precedent for a confirmed-harmless
+  finding. A future v2 could have `absorb_bad_debt` sweep any residual `fee_position` dust to
+  exactly zero when `total_supply_assets` reaches zero, purely for bookkeeping cleanliness — never
+  a correctness or safety requirement, since the value is already, and always will be, zero. Not
+  implemented in Phase 13: it would touch `economic-model.md`'s frozen settlement formula
+  (`§8.2`) for a purely cosmetic gain, which is exactly the kind of unforced formula change
+  `AGENTS.md` §4 requires an ADR for, and Phase 13's mandate is reconciliation, not redesign.
+- **Status:** Confirmed, documented, permanently regression-tested. Not fixed — not a
+  vulnerability.
 
 One genuine, previously-unknown protocol bug (F-10-02) was found and fixed this phase — see below
 for the full account. The remaining question the phase's own acceptance rule raises ("is zero

@@ -1,0 +1,93 @@
+Aegis Protocol -- Phase 13 release-candidate full regression
+Captured: 2026-09-14, this Phase 13 session, on the final release tree (all Phase 13 doc/test
+additions included, zero protocol-logic changes).
+-------------------------------------------------------------------------------------------------
+
+$ cargo fmt --all --check
+(exit 0, no output)
+
+$ cargo clippy --workspace --all-targets -- -D warnings
+    Finished `dev` profile [unoptimized + debuginfo] target(s) in 0.33s
+(zero warnings)
+
+$ ./scripts/check-collateral-transfer-paths.sh
+check-collateral-transfer-paths: OK — vault token movement goes through exactly the shared helpers, from exactly their enumerated call sites
+
+$ ./scripts/check-cpi-allowlist.sh
+check-cpi-allowlist: OK — the only raw CPI target outside the token/system programs is the one opt-in, unsigned liquidation callback dispatch
+
+$ ./scripts/check-no-close.sh
+check-no-close: OK — no close constraint targets Market or Protocol
+
+$ ./scripts/check-no-dup.sh
+check-no-dup: OK — no 'dup' constraint in programs/
+
+$ ./scripts/check-no-float.sh
+check-no-float: OK — no f32/f64 in programs/ or crates/aegis-math/
+
+$ ./scripts/check-no-init-if-needed.sh
+check-no-init-if-needed: OK — no init_if_needed constraint or feature in use
+
+$ ./scripts/check-no-loop.sh
+check-no-loop: OK — every loop in programs/aegis/src is on the reviewed, structurally-bounded allowlist
+
+$ ./scripts/check-no-slot-time.sh
+check-no-slot-time: OK — no Clock.slot usage in programs/
+
+$ ./scripts/check-overflow-checks.sh
+check-overflow-checks: OK — overflow-checks = true is set in [profile.release]
+
+$ ./scripts/check-traceability.sh
+check-traceability: OK — 97 test id(s) referenced by docs/invariants.md (phase <= 12) all exist
+
+$ anchor build
+    Finished `release` profile [optimized] target(s) in 1m 38s
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 1.05s
+
+$ ./scripts/check-cu-regression.sh
+check-cu-regression: measuring current CU via cu_benchmark_suite...
+check-cu-regression: OK — no benchmarked scenario regressed by more than 10% against the committed baseline (37 scenarios checked)
+
+$ cargo test --workspace
+test result: ok ... 49 test-result blocks, 309 individual tests, 0 failed, 4 ignored (network/manual-tagged, excluded by design)
+
+$ npm run codegen:check --prefix sdk/ts
+check-codegen: OK -- sdk/ts/src/generated/ matches the current IDL exactly
+
+$ ./scripts/check-vectors.sh
+check-vectors: OK — tests/vectors/*.json matches current aegis-math output exactly
+
+$ npm test --prefix sdk/ts
+ ✓ test/vectors.test.ts (48 tests)
+ ✓ test/pda.test.ts (12 tests)
+ ✓ test/tx-size.test.ts (12 tests)
+ Test Files  3 passed (3)
+      Tests  72 passed (72)
+
+$ npm run typecheck --prefix app
+(exit 0, no output)
+
+$ npm run build --prefix app
+✓ Compiled successfully
+✓ Generating static pages (4/4)
+
+$ npm run build --prefix bots/liquidator
+(exit 0, no output -- tsc typecheck/compile clean; no automated test suite exists for this
+component, see docs/project-status.md's honest reconciliation of this row)
+
+$ make demo
+... (full transcript: docs/evidence/phase-13-demo-transcript.txt) ...
+Demo complete. All 16 steps of docs/zero-cost-demo.md §5 exercised above, offline, zero cost.
+
+$ make fuzz
+... (full result: docs/evidence/extended-fuzz-campaign-result.txt) ...
+[fuzz-extended] TOTALS seeds=25 ops=100000 succeeded=64429 failed=35571
+test fuzz_extended_campaign ... ok
+
+Mutation-gate spot-check (3 of 9 [GLOBAL] invariants, fresh end-to-end re-run):
+see docs/evidence/mutation-gate-spot-check.txt -- all 3 caught, baseline confirmed clean after
+each revert.
+
+RESULT: every command above passed. No test was skipped, weakened, or deleted to reach this
+result. One genuine finding was made this phase (F-13-01) and is documented, not hidden --
+docs/security/findings.md.

@@ -1,8 +1,8 @@
 # Aegis — Project Status
 
-**Last updated: 2026-09-13**
-**Current phase: Phase 12 — Governance, Upgrades and Migrations — COMPLETE**
-**Next phase: Phase 13 — Integration & release — NOT STARTED**
+**Last updated: 2026-09-14**
+**Current phase: Phase 13 — Integration, Security Review and Release — COMPLETE**
+**This is the final planned phase. No Phase 14 exists or is planned.**
 
 > This file is the first thing any contributor or model reads after `AGENTS.md`. It must always
 > reflect reality. **"Implemented" never means "verified."** The five states below are tracked
@@ -42,7 +42,7 @@ rounded up.
 | 10 | Security campaign | ✅ **COMPLETE** | `phase-10-security` |
 | 11 | Performance | ✅ **COMPLETE** | `phase-11-performance` |
 | 12 | Governance, upgrades & migrations | ✅ **COMPLETE** | `phase-12-governance` |
-| 13 | Integration & release | ⬜ NOT STARTED | — |
+| 13 | Integration, security review & release | ✅ **COMPLETE** | `phase-13-release`, `v0.1.0` |
 
 **Phase 3 is complete.** `deposit_collateral`, `withdraw_collateral` (zero-debt path only), and
 `close_position` exist on-chain, exactly as frozen in `instruction-catalogue.md` §10/11/20 and
@@ -120,17 +120,35 @@ No code in `programs/aegis/src` changed in this phase; every change is in `crate
 | Lend/borrow instructions (`supply`, `withdraw`, `repay`, `accrue_interest`, real oracle-validated `borrow`) | ✅ | ✅ | ✅ | ✅ | ⬜ |
 | Oracle (Pyth adapter, `oracle::require_valid_price`, O-1..O-11) | ✅ | ✅ | ✅ | ✅ | ⬜ |
 | Liquidation & bad debt (`liquidate`, `absorb_bad_debt`, `withdraw_collateral_fees`) | ✅ | ✅ | ✅ | ✅ | ⬜ |
-| Governance & migrations | ⬜ | ⬜ | ⬜ | ✅ | ⬜ |
+| Governance & migrations (two-step admin, guardian pause asymmetry, tighten/loosen timelock, `migrate_protocol_v2`) | ✅ | ✅ | ⬜ | ✅ | ⬜ |
 | `aegis-test-kit` (mints, market/position lifecycle, user token accounts, invariant checker, borrow-state injection, `pyth_fixture` byte-exact `PriceUpdateV2` construction, `liquidate`/`absorb_bad_debt`/`withdraw_collateral_fees` helpers) | ✅ | ✅ | ✅ | ✅ | ⬜ |
 | Invariant fuzzer (`tests/fuzz/`: 2 markets, 6 actors, 9 mutation-validated `[GLOBAL]` invariants, value-creation search) | ✅ | ✅ | ✅ | ✅ | ⬜ |
 | CU benchmarks (`tests/bench/`, `benchmarks/cu.json`, `scripts/check-cu-regression.sh`) | ✅ | ✅ | ✅ | ✅ | ⬜ |
 | `labs/` (`vault-anchor`/`vault-native`/`vault-pinocchio`/`cu-bench`) | ✅ | ✅ | ✅ | ✅ | ⬜ |
 | TypeScript SDK (`@aegis/sdk`: codegen, pda/accounts/math/read/oracle/ix/tx/errors/events) | ✅ | ✅ | ✅ | ✅ | ⬜ |
 | Web app (`app/`: market list, position screen, deposit/borrow/repay/withdraw, demo) | ✅ | ✅ | ✅ | ✅ | ⬜ |
-| Liquidator bot | ⬜ | ⬜ | ⬜ | ✅ | ⬜ |
+| Liquidator bot (`bots/liquidator`) | ✅ | ⬜ | ⬜ | ✅ | ⬜ |
 
 `COMMIT` columns above turn ✅ only once this phase's commit and tag are pushed and verified against
 the remote — see **Git** at the end of this document.
+
+**Phase 13 reconciliation of the two rows above (both were stale, corrected without any code
+change):**
+- **Governance & migrations** was recorded `⬜/⬜/⬜` despite Phase 12 having shipped and tested
+  eight real instructions with 37 passing tests (`phase12_admin_transfer.rs`/`phase12_migration.rs`/
+  `phase12_params.rs`/`phase12_pause.rs`) — a bookkeeping gap from Phase 12 not having updated this
+  table, not a gap in the work itself. Corrected to `✅/✅/⬜` — DEMOED stays honestly ⬜: no runnable
+  demo exercises pause/governance end to end (the mandatory `zero-cost-demo.md` §5 scenario does not
+  call for one, and none exists separately).
+- **Liquidator bot** was recorded `⬜` for IMPLEMENTED, which understated it: `bots/liquidator/src/`
+  is real, non-trivial TypeScript (scanning, health computation, direct and callback liquidation
+  transaction builders) that compiles cleanly (`npm run build`, verified this phase). Corrected to
+  IMPLEMENTED ✅. TESTED and DEMOED remain honestly ⬜: there is no automated test suite (no `test`
+  script in `package.json`), and its `demo`/`perf-c1` scripts require a live local Surfpool
+  validator, excluded from the offline `make test`/`make demo` path by design
+  (`docs/zero-cost-demo.md` §3) — `performance-strategy.md`'s PERF-C1 already cites a real run of
+  `perf-c1` as evidence for that one, narrow contention claim, which is not the same as the bot
+  itself being tested or demoed as a liquidation keeper.
 
 ## Invariant status
 
@@ -4471,6 +4489,287 @@ residue.
 
 ---
 
+## Phase 13 — Integration, Security Review and Release
+
+**Status: COMPLETE.** Phase gate verified first (HEAD at `phase-12-governance`, zero commits since,
+clean tree, baseline suite/CU regression/traceability all green — see §0 below); scope held to
+demo, self-review, runbooks, documentation reconciliation, and release, per
+`docs/phases/phase-13-release.md`'s explicit non-scope (no new instructions, no new features, no
+refactor except to fix a real defect).
+
+### 0. Phase gate (verified before any doc/code change)
+
+```
+$ git log -1 --format='%H' HEAD
+4cfca022076b5b79547edf8f60d56d7799d28a39
+$ git log -1 --format='%H' phase-12-governance
+4cfca022076b5b79547edf8f60d56d7799d28a39        # identical -- HEAD IS the tag
+$ git log phase-12-governance..HEAD --oneline    # (empty -- zero commits since)
+$ git status --short                             # (empty -- clean tree)
+$ cargo test --workspace
+test result: ok ... 49 test-result blocks, 308 individual tests, 0 failed, 4 ignored
+$ ./scripts/check-traceability.sh
+check-traceability: OK — 97 test id(s) referenced by docs/invariants.md (phase <= 12) all exist
+$ ./scripts/check-cu-regression.sh
+check-cu-regression: OK — no benchmarked scenario regressed by more than 10% (37 scenarios)
+```
+
+All ten guard scripts (`check-collateral-transfer-paths`, `check-cpi-allowlist`, `check-no-close`,
+`check-no-dup`, `check-no-float`, `check-no-init-if-needed`, `check-no-loop`, `check-no-slot-time`,
+`check-overflow-checks`, `check-traceability`) pass. `cargo fmt --all --check` and
+`cargo clippy --workspace --all-targets -- -D warnings` are both clean. Phase gate: **satisfied.**
+
+### 1. The complete offline demo (`zero-cost-demo.md` §5)
+
+New: `crates/aegis-test-kit/examples/phase13_demo.rs`, wired to `make demo` (replacing the Phase 8
+demo `make demo` ran previously — that demo remains directly runnable via
+`cargo run -p aegis-test-kit --example phase8_demo`). Implements all 16 steps of the canonical
+scenario against a single market and a single borrower position, using a real Token-2022
+transfer-fee collateral mint (step 1) and real, nonzero IRM rates so interest and protocol fees are
+genuine, not fixture-zeroed: mints/protocol/market → inject prices → lender supplies → borrower
+deposits (fee-aware, measured-delta credited) → borrows → 30-day warp + real accrual with printed
+utilization/APR → a beyond-LTV borrow rejected (`ExceedsMaxLtv`) → a stale-oracle borrow rejected
+(`OraclePriceStale`) → the SAME stale oracle still permits repay + collateral top-up → a fresh
+crashed price makes the position liquidatable → a partial liquidation → a deeper crash and a
+clamped liquidation into real bad debt → `absorb_bad_debt` (protocol fee shares burned first) →
+the lender's full withdrawal realizing the socialized loss → a final invariant report and a
+per-instruction CU ledger built from THIS run's own measured `compute_units_consumed`, never
+copied from `benchmarks/cu.json`. Every "EXPECT FAILURE" step asserts the exact error code AND that
+the position's `borrow_shares`/`collateral_amount` are byte-unchanged, not merely that the call
+failed.
+
+```
+$ make demo
+... (full transcript; see the evidence bundle) ...
+=== 16. Final invariant report and per-instruction compute-unit ledger (this run's own measurements) ===
+  INV-CUS-01: holds
+  INV-CUS-02: holds
+  INV-ACC-03: holds (total_supply_assets >= total_borrow_assets)
+  INV-ACC-06: VIOLATED as expected -- total_supply_shares=22 > 0 while total_supply_assets=0.
+  This is F-13-01 (docs/security/findings.md), a genuine Phase 13 finding, not a demo defect.
+
+instruction                      compute units
+----------------------------------------------
+supply                                  22430
+deposit_collateral                      15718
+borrow                                  49011
+accrue_interest                         14425
+repay                                   24780
+deposit_collateral (stale oracle)       15718
+liquidate (partial)                    107119
+liquidate (clamped, bad debt)           69408
+absorb_bad_debt                         12640
+withdraw                                22425
+```
+
+The demo's own final step is where **F-13-01** (below) was actually discovered — a real, if
+harmless, invariant edge case surfaced by running the mandated full scenario, not invented for this
+report.
+
+### 2. Self-review — F-13-01, and the panic-search correction
+
+`docs/security/review-log.md`'s new "Phase 13" section records the systematic pass. One genuine
+finding (F-13-01: a bad-debt event can leave `fee_position` holding supply-share "dust" that,
+combined with the market's one remaining lender withdrawing in full, can zero `total_supply_assets`
+while `total_supply_shares` stays nonzero — INV-ACC-06's literal text violated). Proven, not
+assumed, to carry zero economic consequence at any future deposit size, including `u64::MAX`
+(`tests/adversarial/orphaned_fee_shares.rs`). No code fix — matching the F-10-01 precedent for a
+confirmed-harmless finding; the recommendation and rationale are in `docs/security/findings.md`.
+
+Separately, this review found and corrected an inaccurate Phase 10 claim: the panic-search section
+of `docs/security/review-log.md` said "zero `.unwrap()`/`.expect()` matches in production code
+paths," which was already false at the time it was written — `liquidate.rs`'s Phase 8 callback
+branch has two, both provably unreachable-to-panic (guarded by a preceding `require_eq!`).
+Corrected in place rather than silently.
+
+### 3. Token-movement paths — six vs. seven, resolved
+
+`docs/account-model.md` §6.3 already documents **seven** paths (Phase 8 updated it when the
+liquidation callback added a new destination on the existing seizure leg) — not six. Verified this
+is exhaustive and current: `grep`-enumerated every `transfer_checked_in`/`transfer_checked_out`
+call site (4 inbound call sites across 2 logical paths, 6 outbound call sites across 5 logical
+paths = 7 total), confirmed no raw `token_interface::transfer_checked` call exists outside
+`token/transfer.rs`, and re-ran `scripts/check-collateral-transfer-paths.sh` (passes: an
+allowlisted-caller-set assertion, not just a count) and `scripts/check-cpi-allowlist.sh`. **No
+eighth, undocumented path exists.**
+
+### 4. `liquidate` deep review
+
+Read end to end, both branches (no-callback and Phase 8 callback), against
+`instruction-catalogue.md` §17 and ADR-0013. Ordering confirmed security-critical and correct:
+pause guard → reentrancy guard → input/token-program checks → oracle validation (before any state
+write, INV-ORA-07) → liquidatability (`HF < WAD` strict) → accounting mutation → (callback branch
+only) seize into the callback account → set guard, flush to the account buffer, dispatch `invoke`
+(never `invoke_signed`) with a minimal, `is_signer: false`-only account list → clear guard →
+**re-read** `loan_vault` and require the measured delta `>= repay_assets` → recompute `hf_after`
+from the same validated price bands. The two `.unwrap()`s in the callback branch are reachable only
+after a preceding `require_eq!` guarantees both `Option`s are `Some` — provably panic-free, not
+merely untested. No gap found in any `require!`/`require_eq!`/`require_keys_eq!` in this file.
+
+### 5. Callback / reentrancy review
+
+Re-verified directly against source, not from memory of the Phase 8/10 record: no `Market` or
+`liquidator` `AccountInfo` ever appears in the callback's constructed `Vec<AccountMeta>`
+(`build_callback_instruction`, unit-testable and unconditionally `is_signer: false`); the guard
+(`market.liquidation_guard`) is set and flushed via `ctx.accounts.market.exit(&crate::ID)?` **before**
+the CPI, checked unconditionally at the top of `handler` in both branches; `A-CPI-01..04` remain
+present and, per the baseline run above, passing. No new Phase 12 account was omitted from
+protection — the four unpausable instructions (`repay`, `deposit_collateral`, `absorb_bad_debt`,
+`close_position`) still carry no `protocol` field at all, structurally.
+
+### 6. Custody source-of-truth audit
+
+Grepped every `.amount` read on `loan_vault`/`collateral_vault` across `programs/aegis/src`. The
+only crediting path is `token/transfer.rs::transfer_checked_in`'s measured `after - before` delta
+following a mandatory `reload()`; no instruction reads a vault's raw balance as an accounting
+source of truth anywhere. **No forbidden path found.**
+
+### 7. Feature-gate / build-mode review
+
+`grep -rn 'cfg(feature' programs/aegis/src crates/aegis-math/src` — zero matches. `overflow-checks
+= true` confirmed in `[profile.release]` and by `scripts/check-overflow-checks.sh`. `lto = "fat"`,
+`codegen-units = 1` unchanged. Program ID (`declare_id!`) matches the deployed devnet program
+recorded in Phase 12 §7. No canonical-build-vs-tested-artifact divergence found.
+
+### 8. Fresh mutation-gate spot-check (3 of 9 [GLOBAL] invariants, representative subset)
+
+Full re-run of all nine gates was judged not to fit this session's remaining budget after the
+demo/review/documentation work above; instead, three were re-run fresh end to end — chosen to
+cover the two files Phase 12 materially changed since the original Phase 10 mutation-validation
+(`withdraw.rs`, `borrow.rs`) plus the accrual core (`market.rs`) — using the exact
+edit→build→probe→revert→rebuild procedure `docs/security/mutation-report.md` established:
+
+| Invariant | File mutated | Detected | Evidence |
+|---|---|:--:|---|
+| INV-CUS-01 | `lend/withdraw.rs` (skip `total_supply_assets` decrement) | ✅ | `mutation_probe` caught in 115 ops (2-step minimized trace: `Supply` → `Withdraw`); `mutation_probe_bad_debt` caught in 55 tail steps |
+| INV-SOLV-01 | `borrow/borrow.rs` (skip the post-borrow LTV `require!`) | ✅ | `mutation_probe` caught in 174 ops (2-step trace: `Supply` → `Borrow`); `mutation_probe_bad_debt` caught in 5 tail steps |
+| INV-ACC-04 | `state/market.rs::accrue_view` (credit interest to borrow side only) | ✅ | `mutation_probe` caught in 624 ops (fired via the downstream INV-CUS-01 check, a legitimate cross-invariant catch, same class as the original INV-ACC-02 mutation's result); `mutation_probe_bad_debt` caught in 200 tail steps |
+
+Each mutation was reverted via `git checkout --` and confirmed byte-identical against `HEAD`
+before proceeding to the next; the full workspace suite was re-run clean afterward (§0's baseline,
+re-confirmed: 309 passed [308 + this phase's new `orphaned_fee_shares` test], 0 failed). The
+remaining six gates (INV-CUS-02, INV-ACC-01, INV-ACC-02, INV-ACC-03, INV-ACC-06, INV-SOLV-04) were
+**not** re-mutated this phase; their Phase 10 evidence (`docs/security/mutation-report.md`) stands,
+and `token/transfer.rs`/`liquidate.rs`/`absorb_bad_debt.rs` — three of the other six gates' target
+files — have had zero commits since Phase 10 (`git log phase-10-security..HEAD --`), which is
+itself evidence those exact enforcement lines are unchanged, though it is not a fresh execution and
+is reported as such rather than rounded up to "all nine re-verified."
+
+### 9. Documentation reconciliation
+
+- **`docs/instruction-catalogue.md`**: added the two instructions missing since Phase 12
+  (`commit_pending_params`, `migrate_protocol_v2` — real, tested, event-emitting since Phase 12; the
+  catalogue simply never listed them) and corrected `repay`'s account list (a stale `[R][PDA]
+  protocol` row predating Phase 12, per ADR-0014 §5's own "negative consequence" note). Program and
+  docs now match exactly: `grep -n 'pub fn ' programs/aegis/src/lib.rs` lists 22 entrypoints (`ping`
+  plus 21 production instructions); all 21 non-`ping` instructions are now documented.
+- **`docs/invariants.md`**: INV-ACC-06's row annotated with the F-13-01 evidence (no enforcement
+  change; a documentation-of-reality addition, matching the precedent INV-CUS-01's own row already
+  set for its Phase 8 callback exception).
+- **`docs/security/review-log.md` / `findings.md`**: see §2 above.
+- **`sdk/ts/src/generated/`**: found and fixed a real, live staleness — the committed IDL/generated
+  code lagged a doc-comment wording change in `set_market_params.rs` (comment-only; no functional
+  API difference). `npm run codegen` regenerated it; `npm run codegen:check` now passes
+  (`check-codegen: OK`); `./scripts/check-vectors.sh` independently confirms `tests/vectors/*.json`
+  is not stale.
+- **`README.md`**: full rewrite (§12 below) — the prior version was still headed "PHASE 9" and
+  described `make fuzz`/`make bench` as non-functional stubs.
+- **Component status table** (this document, above): two stale rows corrected (Governance &
+  migrations; Liquidator bot) — see the note directly under that table.
+- **`docs/runbooks/`** (new): R-1..R-5, per `governance.md` §7 — see §11 below.
+
+### 10. Phase 0 final self-audit — re-answered against the final Phase 13 codebase
+
+Every question from the historical **Phase 0 self-audit** (above, preserved unchanged) re-answered
+fresh, against the code and evidence as they exist today — not copied forward:
+
+| Question | Phase 13 answer |
+|---|---|
+| Is this a coherent lending protocol? | Yes, unchanged in shape and now fully evidenced end to end: the Phase 13 demo (§1) runs the complete supply→borrow→accrue→liquidate→bad-debt→socialize loop against real transactions, not a description of one. |
+| Is any feature present solely for resume coverage? | Re-examined with the full, final feature set in view (governance, migrations, Token-2022, composability all now shipped): every one has a stated product or security reason in its own phase's ADR/spec; `labs/` remains explicitly labeled non-production (`coverage-matrix.md` §2/§3). No new coverage-only feature was added in Phase 13 — none was in scope. |
+| Can the account model parallelize? | Yes, re-confirmed structurally this phase (§3-§6 above) with zero new writable-account sharing introduced since Phase 0; PERF-C1..C3 (Phase 11) remain the measured evidence, unchanged. |
+| Is shared writable state minimized? | Yes. `Protocol` gained one field in Phase 12 (`schema_version`, carved from `_reserved`, no realloc) and remains read-only in every user instruction — confirmed by `grep` this phase finding no new `Protocol`-writing user instruction. |
+| Are authorities unambiguous? | Yes. Still exactly one signer PDA (`Market`); the Phase 8 callback branch is confirmed (§5) to add a new destination, never a new authority. |
+| Could user-provided accounts redirect assets? | No — the double-validation pattern (canonical PDA + `has_one`) was spot-checked this phase in `liquidate.rs`, `absorb_bad_debt.rs`, `set_market_params.rs`/`commit_pending_params.rs` (the two instructions the catalogue was missing) and holds in all of them. |
+| Could the wrong token program be accepted? | No — `require_keys_eq!` against `market.*_token_program` confirmed present at every token-touching call site read this phase, including the two Phase 12 admin instructions that don't touch tokens at all (structurally exempt, not merely unchecked). |
+| Could Token-2022 semantics invalidate accounting? | No — the Phase 13 demo (§1) exercises a real transfer-fee collateral mint through the full lifecycle including liquidation and bad debt, with measured-delta accounting holding at every step; RV-5's Phase 7 closure stands unchanged (no new extension shipped or discovered this phase). |
+| Could vault balances diverge from internal accounting? | Answered precisely, not just "no": INV-CUS-01/02 hold throughout the fresh full-suite run and the demo; the ONE reachable divergence-adjacent state found this phase (F-13-01) is on the SHARE side, proven to carry zero token/value consequence, and is fully documented rather than glossed over. |
+| Could rounding be exploited? | The 14 rounding directions are unchanged; this phase's own investigation of F-13-01 is itself a rounding-boundary analysis, concluding no value creation, extending the T-17 evidence base rather than contradicting it. |
+| What happens when oracle data is unavailable? | Re-verified live, not just re-read: the Phase 13 demo's steps 8-9 make the SAME price account stale by clock warp alone (no re-publish) and show borrow failing closed while repay/deposit succeed, in one continuous run. |
+| What happens during extreme volatility? | Re-exercised in the demo (a $150 → $95 → $40 SOL crash across two liquidations); `max_conf_bps` and the LTV/LT gap are unchanged and were not re-derived this phase (no reason to). |
+| How does bad debt arise? | The demo produces a real instance via mechanism #1 (gap risk: a price crash outrunning what a single partial liquidation can collect) — one of the five named mechanisms, observed directly rather than only described. |
+| How does liquidation fail? | Unchanged; this phase's `liquidate` review (§4) found no new failure mode and no gap in the existing ones. |
+| Which admin action could cause catastrophic damage? | Re-confirmed: none involving funds (INV-ADM-01, and now also covering the two Phase 12 instructions the catalogue was missing, §9) — the upgrade authority (T-30) remains the stated largest residual risk, documented in `governance.md` §5 with the real Phase 12 devnet deployment's own honest Stage-0.5-not-Stage-1 characterization, unchanged. |
+| Which assumptions would be unacceptable for real money? | Unchanged list (`economic-model.md` §11, `threat-model.md` §4), plus F-13-01 is now an explicit, named addendum to "assumptions a real audit should re-examine," rather than an unstated blind spot. |
+| Are tests capable of falsifying important invariants? | Re-tested, not re-asserted: three [GLOBAL] mutation gates were freshly re-run this phase (§8) and all three were caught; the remaining six rest on Phase 10's original, still-largely-unmodified-file evidence, reported honestly as not re-run rather than implied to be. |
+| Is every portfolio claim backed by future observable evidence? | The README rewrite (§12) is the concrete test of this claim for the final time — every number in it traces to a command in this document or a file in this repository. |
+| Could a Sonnet session execute the phases without inventing architecture? | Retrospectively yes, borne out over 13 phases; Phase 13 itself invented no architecture (F-13-01 was investigated and documented, not "fixed" with a new formula, precisely to honor this). |
+| Have unnecessary technologies been rejected explicitly? | Unchanged; Phase 13 added no new technology (no new dependency, no new instruction, no new integration). |
+
+### 11. Operational runbooks R-1..R-5
+
+New: `docs/runbooks/` (`README.md` index + `R-1-oracle-degradation.md` ..
+`R-5-hostile-market-params.md`), expanding `governance.md` §7's trigger/immediate/decide/recovery
+sketches into executable procedures: exact authority, exact SDK calls (verified against the real
+generated function signatures in `sdk/ts/src/generated/instructions.ts` — a real, if minor,
+correction was needed mid-drafting when the first draft assumed a single-options-object call shape
+that does not match the actual generated `(programId, accounts, args)` signature; a further real
+gap was found and disclosed: `@aegis/sdk`'s pause bitflag constants exist only as private,
+unexported constants in `read.ts`, so the runbooks define them locally rather than claim an import
+that would not compile), validation before and after, rollback where one exists, logging, and
+explicit "do not" items, plus a shared "explicit forbidden actions" section.
+
+### 12. README
+
+Full rewrite. Real numbers only: 309 deterministic Rust/TS tests in the release suite (308 from
+`cargo test --workspace` + 1 new this phase), 87 invariants, 32 threats, the 100,000-operation
+extended fuzz campaign figure (Phase 10, cited not re-run at full scale this phase — see §13), the
+`benchmarks/cu.json` CU table, the transaction-size table (`sdk/ts` §12 above, max 834 bytes).
+Removed: the stale "PHASE 9" status banner, the "not yet functional" claim about `make fuzz`/
+`make bench` (both are real and passing). No forbidden marketing term
+(`production-ready`/`battle-tested`/`secure`/`audited`/etc.) appears describing Aegis positively.
+The non-audit/non-deployment warning is in the second visible section, not the footer.
+
+### 13. Extended fuzz campaign and full release regression
+
+`make fuzz` was re-run fresh against the final Phase 13 codebase:
+
+```
+$ make fuzz
+[fuzz-extended] TOTALS seeds=25 ops=100000 succeeded=64429 failed=35571
+test fuzz_extended_campaign ... ok
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 5 filtered out; finished in 323.36s
+```
+
+Zero invariant violations across all 25 seeds / 100,000 operations, including seed 21 (the exact
+seed that found F-10-02 in Phase 10), which now completes cleanly. Full command list and output:
+`docs/evidence/release-regression.txt`; the campaign's own result:
+`docs/evidence/extended-fuzz-campaign-result.txt`.
+
+Full release-candidate regression (fmt, clippy, all 10 guard scripts, `anchor build`, CU
+regression, `cargo test --workspace`, SDK codegen/vectors/unit tests, app typecheck/build,
+liquidator bot compile, `make demo`, `make fuzz`) — every command and its real output:
+`docs/evidence/release-regression.txt`. Final tally: **309 Rust tests + 72 TypeScript tests, 0
+failed**, CU regression clean (37 scenarios), all guard scripts pass, app and SDK build clean.
+
+### 14. Deviations
+
+- No protocol logic was changed. F-13-01 was investigated and documented, not fixed, per its own
+  stated rationale (fixing it would touch the frozen `economic-model.md` §8.2 settlement formula
+  for a purely cosmetic gain — out of Phase 13's reconciliation-not-redesign mandate).
+- A full re-run of all nine [GLOBAL] mutation gates was scoped down to three representative ones
+  (§8) for session time-budget reasons, disclosed rather than rounded up.
+- The extended (100,000-op) fuzz campaign's Phase 13 status is recorded in the final report, not
+  here, for the reason stated in §13.
+
+### 15. Next action
+
+**Phase 13 is complete pending remote tag verification (`phase-13-release`, `v0.1.0` resolving to
+the release commit on `origin`). This is the final planned phase. No Phase 14.**
+
+---
+
 ## Next action
 
-**Phase 12 is complete. Phase 13 (Integration & release) has NOT been started.**
+**Phase 13 is complete — see "Phase 13 — Integration, Security Review and Release" above for full
+evidence. This is the final planned phase of Aegis Protocol. No Phase 14 exists or is planned.**

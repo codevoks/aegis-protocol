@@ -1,0 +1,65 @@
+Aegis Protocol -- Phase 13 fresh mutation-gate spot-check
+Procedure (identical to docs/security/mutation-report.md's original Phase 10 procedure):
+  1. git status --short   (confirm clean tree)
+  2. edit the exact enforcement line(s)
+  3. anchor build          (rebuild the real on-chain artifact the fuzzer loads)
+  4. cargo test --test fuzz --offline -- --ignored mutation_probe --nocapture
+  5. git checkout -- <file>   (revert), then anchor build again to restore the baseline artifact
+Captured: 2026-09-14, this Phase 13 session, against the final release codebase.
+Scope: 3 of the 9 [GLOBAL] invariants, chosen to cover the two files Phase 12 materially changed
+since the original Phase 10 mutation-validation (withdraw.rs, borrow.rs) plus the accrual core
+(market.rs). The remaining six gates were NOT re-mutated this phase -- see
+docs/project-status.md's Phase 13 section §8 for the full disclosure of what was and was not
+re-run, and why.
+-------------------------------------------------------------------------------------------------
+
+### Mutation 1/3 -- INV-CUS-01 (programs/aegis/src/instructions/lend/withdraw.rs)
+Mutation: skip the total_supply_assets decrement after a successful withdrawal.
+
+running 2 tests
+[mutation_probe_bad_debt] seed=1 VIOLATION: VIOLATION DETECTED at tail step 55: assertion `left == right` failed: INV-CUS-01 violated: loan_vault.amount (1000500000001) != total_supply_assets - total_borrow_assets (1099500000001)
+test mutation_probe_bad_debt ... FAILED
+[mutation_probe] seed=1 VIOLATION at step 114: assertion `left == right` failed: INV-CUS-01 violated: loan_vault.amount (929192792371) != total_supply_assets - total_borrow_assets (979192792371)
+[mutation_probe] minimized trace (2 steps, from 115 steps to first detection):
+  [0] Step { market_idx: 1, actor_idx: 1, target_idx: 1, action: Supply { assets: 50000000000 } }
+  [1] Step { market_idx: 1, actor_idx: 1, target_idx: 1, action: Withdraw { assets: 50000000000 } }
+test mutation_probe ... FAILED
+
+RESULT: CAUGHT (both probes). Reverted via `git checkout -- programs/aegis/src/instructions/lend/withdraw.rs`, confirmed byte-identical to HEAD, baseline rebuilt.
+
+### Mutation 2/3 -- INV-SOLV-01 (programs/aegis/src/instructions/borrow/borrow.rs)
+Mutation: skip the post-borrow require!(within_ltv, ExceedsMaxLtv) check.
+
+running 2 tests
+[mutation_probe_bad_debt] seed=1 VIOLATION: VIOLATION DETECTED at tail step 5: INV-SOLV-01 violated: debt_value (600000001000000000000) exceeds collateral_value*max_ltv/WAD (cv=0, max_ltv=750000000000000000)
+test mutation_probe_bad_debt ... FAILED
+[mutation_probe] seed=1 VIOLATION at step 173: INV-SOLV-01 violated: debt_value (1625600708663400000) exceeds collateral_value*max_ltv/WAD (cv=0, max_ltv=750000000000000000)
+[mutation_probe] minimized trace (2 steps, from 174 steps to first detection):
+  [0] Step { market_idx: 0, actor_idx: 1, target_idx: 1, action: Supply { assets: 49687506368 } }
+  [1] Step { market_idx: 0, actor_idx: 3, target_idx: 3, action: Borrow { assets: 90622287 } }
+test mutation_probe ... FAILED
+
+RESULT: CAUGHT (both probes). Reverted via `git checkout -- programs/aegis/src/instructions/borrow/borrow.rs`, confirmed byte-identical to HEAD, baseline rebuilt.
+
+### Mutation 3/3 -- INV-ACC-04 (programs/aegis/src/state/market.rs::accrue_view)
+Mutation: credit `interest` to total_borrow_assets but not to total_supply_assets.
+
+running 2 tests
+[mutation_probe_bad_debt] seed=1 VIOLATION: VIOLATION DETECTED at tail step 200: assertion `left == right` failed: INV-CUS-01 violated: loan_vault.amount (1251020168080) != total_supply_assets - total_borrow_assets (1251020168076)
+test mutation_probe_bad_debt ... FAILED
+[mutation_probe] seed=1 VIOLATION at step 623: assertion `left == right` failed: INV-CUS-01 violated: loan_vault.amount (1386498657617) != total_supply_assets - total_borrow_assets (1386498656244)
+[mutation_probe] minimized trace (3 steps, from 624 steps to first detection):
+  [0] Step { market_idx: 1, actor_idx: 3, target_idx: 3, action: Supply { assets: 99000000000 } }
+  [1] Step { market_idx: 1, actor_idx: 2, target_idx: 2, action: DepositCollateral { amount: 990000000 } }
+  [2] Step { market_idx: 1, actor_idx: 2, target_idx: 2, action: Borrow { assets: 50000000 } }
+test mutation_probe ... FAILED
+
+RESULT: CAUGHT (both probes, fired via the downstream INV-CUS-01 check -- a legitimate
+cross-invariant catch, the same class of result the original Phase 10 INV-ACC-02 mutation
+produced). Reverted via `git checkout -- programs/aegis/src/state/market.rs`, confirmed
+byte-identical to HEAD, baseline rebuilt.
+
+### Post-spot-check regression
+Full workspace suite re-run clean after all three reverts:
+  cargo test --workspace
+  test result: ok ... 49 test-result blocks, 309 individual tests, 0 failed, 4 ignored

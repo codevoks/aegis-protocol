@@ -6,3 +6,6 @@
 
 #[path = "adversarial/dust_debt.rs"]
 mod dust_debt;
+
+#[path = "adversarial/orphaned_fee_shares.rs"]
+mod orphaned_fee_shares;

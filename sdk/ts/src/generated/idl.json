@@ -1775,8 +1775,8 @@
             "is never read or written. On the loosening path, the handler verifies it is not already",
             "initialized (else `PendingParamsAlreadyStaged`) and creates it itself via a manual",
             "`system_program::create_account` CPI signed with its own PDA seeds — the sanctioned",
-            "Anchor-1.0 pattern for \"create only if it doesn't already exist\" now that `init_if_needed`",
-            "is banned (AGENTS.md §7.10)."
+            "Anchor-1.0 pattern for \"create only if it doesn't already exist\" now that the banned",
+            "conditional-init constraint (AGENTS.md §7.10) is off the table."
           ],
           "writable": true,
           "pda": {

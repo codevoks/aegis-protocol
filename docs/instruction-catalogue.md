@@ -36,6 +36,12 @@ all arithmetic is checked · no duplicate mutable accounts (Anchor 1.0 default; 
 | 18 | `absorb_bad_debt` | anyone | **no** | yes | **no** | 6 |
 | 19 | `withdraw_collateral_fees` | admin | no | yes | no | 6 |
 | 20 | `close_position` | owner | no | no | no | 3 |
+| 21 | `commit_pending_params` | anyone (permissionless) | – | yes | – | 12 |
+| 22 | `migrate_protocol_v2` | admin | – | – | – | 12 |
+
+Rows 21-22 were omitted from this table when Phase 12 shipped; added in Phase 13's documentation
+reconciliation pass (both instructions existed on-chain, tested, and event-emitting since Phase 12
+— see `docs/project-status.md` Phase 12 §§4-5 — this was a doc-only gap, not a missing feature).
 
 Phases 3 and 4 ship instructions whose oracle dependency is stubbed by a compile-time-absent path
 until Phase 5; see the phase specs for exactly how that is sequenced without shipping insecure code.
@@ -281,8 +287,13 @@ Exactly one of `assets`/`shares` is non-zero (E-22, E-23).
 ## 15. `repay(assets: u64, shares: u128)`
 
 - **Caller/signer:** `[S][W] payer` — **anyone may repay anyone's debt.**
-- **Accounts:** `[R][PDA] protocol` · `[W][PDA] market` · `[W][PDA] position` · `[W][PDA] fee_position` ·
+- **Accounts:** `[W][PDA] market` · `[W][PDA] position` · `[W][PDA] fee_position` ·
   `[W] loan_vault` · `[W] payer_loan_ata` · `[R] loan_mint` · `[R] loan_token_program`
+  — **no `protocol` account** (Phase 12 / ADR-0014 §5: a deliberate, security-motivated narrowing.
+  This row previously listed `[R][PDA] protocol`, drafted alongside `supply`/`withdraw`/`borrow`'s
+  near-identical shape before Phase 12 existed; corrected in Phase 13 to match the actual
+  `Accounts` struct. The load-bearing property is structural — `repay` has no code path that could
+  ever consult pause state, not merely a policy of ignoring an account it holds, per INV-ADM-04).
 - **Preconditions:** **unpausable**; **no oracle**; exactly one input non-zero;
   computed `shares ≤ position.borrow_shares` (clamp, E-06 — never pull more tokens than the debt).
 - **State transition:** `accrue_mut`; `assets`-given → `shares = to_shares_down`; decrement position
@@ -432,6 +443,71 @@ the trade against available swap liquidity, which matters for Phase 8.)
 
 Loan-side protocol fees have **no** withdrawal instruction — the fee recipient calls `withdraw` like
 any other lender. One fewer privileged code path.
+
+---
+
+## 21. `commit_pending_params()`
+
+*Added to this catalogue in Phase 13 — implemented, tested, and event-emitting since Phase 12
+(`programs/aegis/src/instructions/admin/commit_pending_params.rs`); this entry corrects a
+documentation gap, not a code change.*
+
+- **Caller/signer:** `[S] payer` — **permissionless**, any funded signer (`governance.md` §4,
+  ADR-0014 §7: by the time the timelock has elapsed, applying the already-public, already-fixed
+  proposal exercises no further admin discretion, so gating this to the admin would add a
+  liveness dependency for no security benefit).
+- **Accounts:** `[R][PDA] protocol` · `[W] admin` (`UncheckedAccount`, address-pinned to
+  `protocol.admin`; receives the `pending_market_params` rent refund via `close = admin` —
+  **never** `payer`, removing any incentive to grief-call this for profit) · `[W][PDA] market` ·
+  `[W][PDA] fee_position` · `[W][PDA] pending_market_params` (closed)
+- **Preconditions:** `pending_market_params` exists for this market; `Clock::unix_timestamp >=
+  pending_market_params.effective_at` (else `PendingParamsNotYetEffective`).
+- **State transition:** the full canonical bounds (`Market::validate_risk_params` /
+  `validate_irm_params` / `validate_oracle_config`) are **re-validated** against the staged values
+  first — a proposal valid when staged is never assumed valid forever; `accrue_mut` under the
+  still-active OLD parameters (same INV-ADM-07 ordering as `set_market_params`); applies the
+  staged parameters; closes `pending_market_params`, refunding rent to `admin`
+  (== `protocol.admin`).
+- **Tokens:** none. **Arithmetic:** none beyond `accrue_mut`.
+- **Events:** `StagedParamsCommitted { market, pending_market_params, effective_at }`.
+- **Invariants:** INV-ADM-09, INV-ADM-05, INV-ADM-07.
+- **Failure cases:** no pending proposal exists for this market; timelock not yet elapsed; the
+  staged values would now fail bounds re-validation (only reachable if bounds themselves changed
+  between staging and commit, which they cannot in v1 — recorded for completeness).
+- **Attack vectors:** *grief-calling to farm the rent refund* → refund always targets
+  `protocol.admin`, never the caller, so there is no profit motive. *Committing a stale/decayed
+  proposal* → re-validated against current bounds at commit time, not merely at staging time.
+
+## 22. `migrate_protocol_v2()`
+
+*Added to this catalogue in Phase 13 — implemented, tested, and event-emitting since Phase 12
+(`programs/aegis/src/instructions/admin/migrate_protocol_v2.rs`); this entry corrects a
+documentation gap, not a code change.*
+
+- **Caller/signer:** `[S] admin` — checked against the **pre-migration** account's own `admin`
+  field via `Migration::try_as_from()`, since the account's type is not yet known to be `Protocol`
+  or `ProtocolV1` at the point Anchor's declarative constraints run.
+- **Accounts:** `[W] protocol` (typed `Migration<'info, ProtocolV1, Protocol>`, not a plain
+  `Account<'info, Protocol>` — Anchor's real migration primitive, `governance.md` §6, ADR-0014 §8).
+  No token account, no mint, no vault — this instruction moves no funds and touches no other
+  account.
+- **Preconditions:** the account is the canonical `PDA([b"protocol"])` (checked manually — a
+  `Migration<'info, ...>` field does not support a declarative `seeds =`/`bump` constraint);
+  `Migration::try_from` itself rejects an account that is uninitialized or already in the
+  `Protocol` (target) format, before the handler body ever runs.
+- **State transition:** copies every field byte-for-byte from `ProtocolV1` into the new `Protocol`
+  layout, initializing the one new field (`schema_version`) to `constants::PROTOCOL_SCHEMA_VERSION`;
+  no realloc (`ProtocolV1::LEN == Protocol::LEN == 202`, the new field carved out of `_reserved`).
+- **Tokens:** none. **Arithmetic:** none.
+- **Events:** `ProtocolMigrated`.
+- **Invariants:** INV-UPG-01, INV-UPG-02, INV-UPG-03.
+- **Failure cases:** wrong signer (not the pre-migration account's own `admin`); account not owned
+  by this program; account already migrated (its discriminator no longer matches `ProtocolV1`);
+  corrupted or garbage account data; a nonexistent account; a non-canonical PDA.
+- **Attack vectors:** *replay to re-run the migration* → impossible; the second attempt fails at
+  account deserialization (Anchor's own `AccountDiscriminatorMismatch`), not a hand-rolled
+  "already migrated" flag a future edit could accidentally skip. *Using this as a fund-rescue path*
+  → structurally impossible; no token/vault account is even in this instruction's `Accounts` list.
 
 ---
 

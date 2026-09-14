@@ -34,20 +34,23 @@ setup:
 ## the maintainer, not a Phase 8 code change. `anchor build` is left plain below so this warning
 ## stays visible; run `anchor build --ignore-keys` manually if you need to build past it locally.
 ##
-## NOTE (found in Phase 13's clean-clone reproduction test): `vault-native`/`vault-pinocchio`
-## (Phase 11's `labs/`, plain Cargo crates, not Anchor programs) were missing from this target
-## entirely -- `cargo test --workspace` needs their compiled `.so`s (`labs/vault-native/tests/
-## basic.rs` and `labs/vault-pinocchio/tests/basic.rs` both `include_bytes!` them directly), but
-## nothing in `make build` produced them. This was invisible in CI because its `target/` cache
-## persists across runs once built once (`.github/workflows/ci.yml`'s `actions/cache` step) and
-## invisible locally to any session that inherited an already-built `target/` -- a genuinely clean
-## clone's `make build && make test` failed outright with "No such file or directory" until now.
-## `vault_anchor` needed no addition: it IS an Anchor program (`Anchor.toml`'s `[programs.localnet]`
-## lists it), so plain `anchor build` already produces it.
+## NOTE (found in Phase 13's clean-clone reproduction test): THREE of Phase 11's `labs/` programs
+## (`vault-anchor`, `vault-native`, `vault-pinocchio`) were missing from this target entirely --
+## `cargo test --workspace` needs each one's compiled `.so` (`labs/vault-{anchor,native,
+## pinocchio}/tests/basic.rs` all `include_bytes!` one directly), but nothing in `make build`
+## produced any of them. `vault-anchor` is listed in `Anchor.toml`'s `[programs.localnet]`, which
+## made it easy to assume plain `anchor build` would build it -- verified directly that it does
+## NOT: like `example-liquidator`/`hostile-callback` above, `anchor build`'s own notion of "the
+## workspace" only discovers programs under `programs/`, regardless of `Anchor.toml` listing a
+## program elsewhere. This was invisible in CI because its `target/` cache persists across runs
+## once built once (`.github/workflows/ci.yml`'s `actions/cache` step) and invisible locally to any
+## session that inherited an already-built `target/` -- a genuinely clean clone's `make build &&
+## make test` failed outright with "No such file or directory" until now.
 build:
 	anchor build
 	cargo build-sbf --manifest-path labs/example-liquidator/Cargo.toml
 	cargo build-sbf --manifest-path labs/hostile-callback/Cargo.toml
+	cargo build-sbf --manifest-path labs/vault-anchor/Cargo.toml
 	cargo build-sbf --manifest-path labs/vault-native/Cargo.toml
 	cargo build-sbf --manifest-path labs/vault-pinocchio/Cargo.toml
 
@@ -105,8 +108,18 @@ bench-contention:
 
 ## Phase 11 labs: build and benchmark the vault-anchor/vault-native/vault-pinocchio custody
 ## primitives (docs/adr/0003-native-pinocchio-as-labs.md).
+##
+## NOTE (Phase 13): `anchor build -p vault-anchor --ignore-keys` (this target's original form)
+## fails outright with "vault-anchor is not part of the workspace" -- verified directly, not
+## assumed from the `build` target's own comment about `example-liquidator`/`hostile-callback`
+## having the identical problem. `vault-anchor` being listed in `Anchor.toml`'s
+## `[programs.localnet]` does not change this: `anchor build`'s workspace discovery only looks
+## under `programs/`, regardless of that list. Fixed to the same `cargo build-sbf
+## --manifest-path` form already used for the plain-Rust labs below -- verified to work (Anchor
+## programs build via plain `cargo build-sbf` fine; that is what `anchor build` itself shells out
+## to per program).
 labs-build:
-	anchor build -p vault-anchor --ignore-keys
+	cargo build-sbf --manifest-path labs/vault-anchor/Cargo.toml
 	cargo build-sbf --manifest-path labs/vault-native/Cargo.toml
 	cargo build-sbf --manifest-path labs/vault-pinocchio/Cargo.toml
 
